@@ -1,0 +1,847 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Family Tracker">
+<meta name="theme-color" content="#f0ede6">
+<title>Family Tracker</title>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+:root{--green:#1D9E75;--green-l:#E1F5EE;--green-m:#9FE1CB;--green-d:#0F6E56;--green-dd:#085041;--red:#ef4444;--red-l:#fee2e2;--amber:#f59e0b;--amber-l:#fef3c7;--amber-d:#92400e;--bg:#f0ede6;--surf:#fff;--surf2:#f7f4ef;--surf3:#ede9e0;--txt:#1a1917;--txt2:#6b6760;--txt3:#a8a49e;--bdr:rgba(0,0,0,.07);--bdr2:rgba(0,0,0,.13);--r:14px;--rsm:9px}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;background:var(--bg);font-family:'Nunito',sans-serif;color:var(--txt);overscroll-behavior:none}
+body{display:flex;flex-direction:column;max-width:520px;margin:0 auto;min-height:100vh}
+.hdr{background:var(--surf);border-bottom:1px solid var(--bdr);padding:14px 16px 0;position:sticky;top:0;z-index:100;flex-shrink:0}
+.hdr-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:2px}
+.hdr-title{font-size:19px;font-weight:900;color:var(--txt);letter-spacing:-.3px}
+.hdr-title span{color:var(--green)}
+.hdr-date{font-size:12px;color:var(--txt3);margin-bottom:10px}
+.sync-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--green-m);margin-right:5px;vertical-align:middle;transition:background .3s}
+.sync-dot.err{background:#f87171}
+.sync-dot.syncing{background:var(--green-m);animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.sync-txt{font-size:11px;color:var(--txt3);vertical-align:middle}
+.tabs{display:flex;overflow-x:auto;scrollbar-width:none;margin:0 -16px;padding:0 16px}
+.tabs::-webkit-scrollbar{display:none}
+.tab{padding:8px 13px;font-size:13px;font-weight:700;color:var(--txt3);border-bottom:2.5px solid transparent;cursor:pointer;white-space:nowrap;flex-shrink:0;transition:all .15s;user-select:none}
+.tab.on{color:var(--green-d);border-bottom-color:var(--green)}
+.scroll{flex:1;overflow-y:auto;padding:14px 16px 32px;-webkit-overflow-scrolling:touch}
+.kid-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+.kid-card{background:var(--surf);border-radius:var(--r);padding:13px 13px 11px;border:1px solid var(--bdr);cursor:pointer;transition:transform .1s;user-select:none}
+.kid-card:active{transform:scale(.97)}
+.kid-card.pass{background:var(--green-l);border-color:var(--green-m)}
+.kid-card.fail{background:var(--red-l);border-color:#fca5a5}
+.kid-card.warn{background:var(--amber-l);border-color:#fcd34d}
+.kid-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.kid-name{font-size:14px;font-weight:800}
+.kid-card.pass .kid-name{color:var(--green-dd)}
+.kid-card.fail .kid-name{color:#991b1b}
+.kid-card.warn .kid-name{color:var(--amber-d)}
+.kid-score{font-size:22px;font-weight:900;line-height:1;color:var(--green-d)}
+.kid-card.fail .kid-score{color:#dc2626}
+.kid-card.warn .kid-score{color:var(--amber)}
+.kid-score-sub{font-size:11px;font-weight:700;color:var(--txt3);margin-top:1px}
+.kid-card.pass .kid-score-sub{color:var(--green-d)}
+.kid-card.fail .kid-score-sub{color:#dc2626}
+.kid-card.warn .kid-score-sub{color:var(--amber-d)}
+.mbar{height:5px;background:rgba(0,0,0,.07);border-radius:3px;margin-top:9px;overflow:hidden}
+.mbar-f{height:100%;border-radius:3px;background:var(--green);transition:width .4s}
+.kid-card.fail .mbar-f{background:#ef4444}
+.kid-card.warn .mbar-f{background:var(--amber)}
+.group-box{border-radius:var(--r);padding:14px 16px;margin-bottom:12px;border:1px solid var(--bdr);background:var(--surf)}
+.group-box.lit{background:var(--green-l);border-color:var(--green-m)}
+.group-title{font-size:14px;font-weight:800;color:var(--txt);margin-bottom:3px}
+.group-box.lit .group-title{color:var(--green-dd)}
+.group-sub{font-size:13px;color:var(--txt2);line-height:1.4}
+.group-box.lit .group-sub{color:var(--green-d)}
+.week-strip{background:var(--surf);border:1px solid var(--bdr);border-radius:var(--r);padding:13px 15px;margin-bottom:12px}
+.week-title{font-size:11px;font-weight:800;color:var(--txt3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px}
+.week-row{display:flex;align-items:center;gap:9px;padding:6px 0;border-bottom:1px solid var(--bdr)}
+.week-row:last-child{border-bottom:none}
+.week-name{font-size:13px;font-weight:700;color:var(--txt);min-width:56px}
+.week-bar-wrap{flex:1;height:6px;background:var(--surf3);border-radius:3px;overflow:hidden}
+.week-bar-fill{height:100%;border-radius:3px;background:var(--green);transition:width .4s}
+.week-pts{font-size:12px;font-weight:800;color:var(--txt2);min-width:46px;text-align:right}
+.week-badge{font-size:10px;font-weight:800;padding:2px 7px;border-radius:99px;white-space:nowrap;flex-shrink:0}
+.wb-pass{background:var(--green-l);color:var(--green-dd)}
+.wb-warn{background:var(--amber-l);color:var(--amber-d)}
+.wb-fail{background:var(--red-l);color:#991b1b}
+.reset-row{display:flex;gap:8px;margin-bottom:12px}
+.reset-btn{flex:1;padding:11px;background:var(--surf);border:1px solid var(--bdr2);border-radius:var(--r);font-family:'Nunito',sans-serif;font-size:12px;font-weight:700;color:var(--txt2);cursor:pointer;transition:background .15s}
+.reset-btn:active{background:var(--surf3)}
+.reset-btn.danger{border-color:#fca5a5;color:#dc2626}
+.pts-hdr{background:var(--green-l);border-radius:var(--r);padding:16px;margin-bottom:10px;display:flex;align-items:center;gap:14px}
+.pts-big{font-size:44px;font-weight:900;color:var(--green-dd);line-height:1}
+.pts-meta{flex:1}
+.pts-lbl{font-size:12px;color:var(--green-d);font-weight:700;margin-bottom:6px}
+.bar{height:8px;background:rgba(255,255,255,.55);border-radius:4px;overflow:hidden}
+.bar-fill{height:100%;background:var(--green);border-radius:4px;transition:width .35s}
+.bar-pct{font-size:11px;color:var(--green-d);margin-top:4px;font-weight:600}
+.week-hdr{background:var(--surf);border:1px solid var(--bdr);border-radius:var(--r);padding:12px 15px;margin-bottom:14px;display:flex;align-items:center;gap:12px}
+.week-hdr-lbl{font-size:12px;font-weight:700;color:var(--txt3);flex:1}
+.week-hdr-pts{font-size:20px;font-weight:900;color:var(--txt)}
+.sec-lbl{font-size:11px;font-weight:800;color:var(--txt3);text-transform:uppercase;letter-spacing:.08em;margin:14px 0 7px}
+.task-item{background:var(--surf);border:1px solid var(--bdr);border-radius:var(--rsm);padding:12px 13px;display:flex;align-items:center;gap:11px;cursor:pointer;margin-bottom:7px;transition:all .12s;user-select:none}
+.task-item:active{transform:scale(.98)}
+.task-item.done{background:var(--green-l);border-color:var(--green-m)}
+.cb{width:22px;height:22px;border-radius:6px;border:2px solid var(--bdr2);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s}
+.task-item.done .cb,.chore-wrap.done .cb{background:var(--green);border-color:var(--green)}
+.ck{display:none}
+.task-item.done .ck,.chore-wrap.done .ck{display:block}
+.t-name{flex:1;font-size:14px;font-weight:700;color:var(--txt)}
+.task-item.done .t-name,.chore-wrap.done .t-name{color:var(--green-dd)}
+.t-pts{font-size:11px;font-weight:800;padding:2px 8px;border-radius:99px;background:var(--surf3);color:var(--txt3);flex-shrink:0}
+.task-item.done .t-pts,.chore-wrap.done .t-pts{background:var(--green-m);color:var(--green-dd)}
+.chore-wrap{background:var(--surf);border:1px solid var(--bdr);border-radius:var(--rsm);margin-bottom:7px;overflow:hidden}
+.chore-wrap.done{background:var(--green-l);border-color:var(--green-m)}
+.chore-hdr{display:flex;align-items:center;gap:11px;padding:12px 13px;cursor:pointer;user-select:none}
+.chore-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px;padding:0 13px 13px}
+.copt{padding:8px 9px;border-radius:7px;border:1px solid var(--bdr);font-size:12px;font-weight:700;cursor:pointer;background:var(--surf2);color:var(--txt2);text-align:center;line-height:1.3;transition:all .1s;user-select:none}
+.copt:active{transform:scale(.95)}
+.copt.sel{background:var(--green);border-color:var(--green);color:#fff}
+.extra-wrap{background:var(--surf);border:1px solid var(--bdr);border-radius:var(--rsm);padding:12px 13px;margin-bottom:7px}
+.extra-title{font-size:13px;font-weight:700;color:var(--txt2);margin-bottom:9px}
+.extra-row{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.xbtn{width:36px;height:36px;border-radius:8px;border:1px solid var(--bdr2);background:var(--surf2);cursor:pointer;font-size:20px;font-weight:900;display:flex;align-items:center;justify-content:center;color:var(--txt);user-select:none}
+.xbtn:active{transform:scale(.88)}
+.xval{font-size:15px;font-weight:800;min-width:52px;text-align:center;color:var(--txt)}
+.xinfo{font-size:13px;color:var(--txt2);flex:1;min-width:100px}
+.xinfo b{color:var(--green-d)}
+.log-btn{padding:7px 14px;border-radius:8px;border:none;background:var(--amber);color:#fff;font-family:'Nunito',sans-serif;font-size:12px;font-weight:800;cursor:pointer;margin-top:8px;width:100%}
+.log-btn:active{opacity:.8}
+.rew-wrap{background:var(--surf);border:1px solid var(--bdr);border-radius:var(--rsm);overflow:hidden;margin-bottom:7px}
+.rew-row{display:flex;align-items:center;gap:10px;padding:11px 13px;border-bottom:1px solid var(--bdr)}
+.rew-row:last-child{border-bottom:none}
+.rew-pts{font-size:12px;font-weight:800;color:var(--txt3);min-width:44px}
+.rew-desc{font-size:13px;color:var(--txt);flex:1;line-height:1.3}
+.badge{font-size:11px;font-weight:800;padding:3px 9px;border-radius:99px;white-space:nowrap;flex-shrink:0}
+.bon{background:var(--green-l);color:var(--green-dd)}
+.boff{background:var(--surf3);color:var(--txt3)}
+.rcv-btn{padding:4px 10px;border-radius:99px;border:1px solid var(--green-m);background:var(--surf);font-family:'Nunito',sans-serif;font-size:11px;font-weight:800;color:var(--green-d);cursor:pointer;flex-shrink:0}
+.rcv-btn.got{background:var(--green-l)}
+.adm{padding:4px 0 32px}
+.adm-sec{margin-bottom:18px}
+.adm-stitle{font-size:11px;font-weight:800;color:var(--txt3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px}
+.adm-row{display:flex;align-items:center;gap:9px;background:var(--surf);border:1px solid var(--bdr);border-radius:var(--rsm);padding:10px 12px;margin-bottom:6px;flex-wrap:wrap}
+.adm-lbl{flex:1;font-size:14px;font-weight:700;color:var(--txt);min-width:100px}
+.adm-sub{font-size:11px;color:var(--txt3);font-weight:600;margin-top:1px}
+.adm-num{width:56px;padding:6px 8px;border-radius:7px;border:1px solid var(--bdr2);background:var(--surf2);font-size:14px;font-weight:800;color:var(--txt);text-align:center;font-family:'Nunito',sans-serif;flex-shrink:0}
+.adm-txt{padding:6px 9px;border-radius:7px;border:1px solid var(--bdr2);background:var(--surf2);font-size:13px;font-weight:600;color:var(--txt);font-family:'Nunito',sans-serif;flex:1;min-width:80px}
+.adm-save{width:100%;padding:13px;background:var(--green);color:#fff;border:none;border-radius:var(--r);font-family:'Nunito',sans-serif;font-size:15px;font-weight:800;cursor:pointer;margin-top:6px;transition:opacity .15s}
+.adm-save:active{opacity:.85}
+.adm-add{padding:8px 14px;border-radius:8px;border:1px solid var(--bdr2);background:var(--surf2);font-size:13px;font-weight:700;color:var(--txt2);cursor:pointer;font-family:'Nunito',sans-serif;margin-top:3px}
+.adm-del{width:30px;height:30px;border-radius:7px;border:1px solid var(--bdr);background:var(--surf2);color:var(--txt3);cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.adm-del:active{background:#fee2e2;color:#dc2626}
+.lock-card{background:var(--surf);border:1px solid var(--bdr);border-radius:var(--r);padding:22px 18px;margin-top:20px}
+.lock-title{font-size:16px;font-weight:800;margin-bottom:6px;color:var(--txt)}
+.lock-sub{font-size:13px;color:var(--txt2);margin-bottom:16px}
+.lock-input{width:100%;padding:11px 13px;border-radius:9px;border:1px solid var(--bdr2);background:var(--surf2);font-size:16px;font-family:'Nunito',sans-serif;color:var(--txt);margin-bottom:11px}
+.lock-btn{width:100%;padding:12px;background:var(--green);color:#fff;border:none;border-radius:9px;font-family:'Nunito',sans-serif;font-size:15px;font-weight:800;cursor:pointer}
+.err-txt{font-size:13px;color:#dc2626;margin-bottom:10px;font-weight:600}
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.42);z-index:200;display:flex;align-items:flex-end;justify-content:center}
+.modal{background:var(--surf);border-radius:20px 20px 0 0;padding:24px 20px 40px;width:100%;max-width:520px;max-height:90vh;overflow-y:auto}
+.modal-title{font-size:17px;font-weight:800;margin-bottom:7px;color:var(--txt)}
+.modal-body{font-size:14px;color:var(--txt2);margin-bottom:16px;line-height:1.5}
+.modal-btns{display:flex;gap:10px;margin-top:16px}
+.mbtn{flex:1;padding:13px;border-radius:10px;border:none;font-family:'Nunito',sans-serif;font-size:15px;font-weight:800;cursor:pointer}
+.mbtn-cancel{background:var(--surf3);color:var(--txt2)}
+.mbtn-del{background:#ef4444;color:#fff}
+.mbtn-grn{background:var(--green);color:#fff}
+.mbtn-amb{background:var(--amber);color:#fff}
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1a1917;color:#fff;padding:10px 18px;border-radius:99px;font-size:13px;font-weight:700;z-index:300;opacity:0;transition:opacity .25s;pointer-events:none;white-space:nowrap}
+.toast.show{opacity:1}
+.ck-svg{width:12px;height:9px;fill:none;stroke:#fff;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.log-day{background:var(--surf);border:1px solid var(--bdr);border-radius:var(--rsm);margin-bottom:8px;overflow:hidden}
+.log-day-hdr{display:flex;align-items:center;gap:10px;padding:11px 13px;cursor:pointer;user-select:none}
+.log-day-date{font-size:13px;font-weight:800;color:var(--txt);flex:1}
+.log-day-total{font-size:12px;font-weight:700;color:var(--txt2)}
+.log-day-body{padding:0 13px 12px;display:none}
+.log-kid-row{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--bdr)}
+.log-kid-row:last-child{border-bottom:none}
+.log-kid-name{font-size:13px;font-weight:700;color:var(--txt);min-width:64px}
+.log-kid-pts{font-size:13px;font-weight:800;color:var(--green-d);min-width:36px}
+.log-kid-edit{font-size:11px;padding:3px 9px;border-radius:99px;border:1px solid var(--bdr2);background:var(--surf2);color:var(--txt2);cursor:pointer;font-family:'Nunito',sans-serif;font-weight:700}
+.money-card{background:var(--surf);border:1px solid var(--bdr);border-radius:var(--rsm);padding:12px 13px;margin-bottom:8px}
+.money-name{font-size:14px;font-weight:800;color:var(--txt);margin-bottom:8px}
+.money-row{display:flex;align-items:center;gap:8px;margin-bottom:5px}
+.money-lbl{font-size:12px;color:var(--txt2);flex:1}
+.money-amt{font-size:14px;font-weight:800}
+.money-amt.owed{color:#dc2626}
+.money-amt.paid-c{color:var(--green-d)}
+.pay-btn{padding:6px 13px;border-radius:8px;border:none;font-family:'Nunito',sans-serif;font-size:12px;font-weight:800;cursor:pointer}
+.pay-btn.grn{background:var(--green);color:#fff}
+</style>
+</head>
+<body>
+<div class="hdr">
+  <div class="hdr-top">
+    <div class="hdr-title">&#11088; <span>Family</span> Tracker</div>
+    <div><span class="sync-dot" id="sdot"></span><span class="sync-txt" id="stxt">Loading...</span></div>
+  </div>
+  <div class="hdr-date" id="hdr-date"></div>
+  <div class="tabs" id="tabs"></div>
+</div>
+<div class="scroll" id="scroll"></div>
+<div class="modal-bg" id="modal-bg" style="display:none"></div>
+<div class="toast" id="toast"></div>
+<script>
+const SB_URL='https://drolxhkgaleaisrjkrik.supabase.co';
+const SB_ANON='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRyb2x4aGtnYWxlYWlzcmprcmlrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyMzA1NjMsImV4cCI6MjA5MTgwNjU2M30.XrjwNfKq09FjKTH4WXDQ1HAy9hi3WfILN6uhYXYQA1I';
+const FN=`${SB_URL}/functions/v1`;
+const H={'apikey':SB_ANON,'Authorization':'Bearer '+SB_ANON,'Content-Type':'application/json'};
+
+// ── HELPERS ──────────────────────────────────────────────
+function todayKey(){
+  const d=new Date();
+  return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+async function callFn(name,body){
+  const r=await fetch(`${FN}/${name}`,{method:'POST',headers:H,body:JSON.stringify(body)});
+  return r.json();
+}
+async function insertEvent(event_type,child_id,payload){
+  // Optimistic: already applied locally. This syncs to DB.
+  await fetch(`${SB_URL}/rest/v1/events`,{
+    method:'POST',
+    headers:{...H,'Prefer':'return=minimal'},
+    body:JSON.stringify({day_key:todayKey(),child_id,event_type,payload})
+  });
+}
+
+// ── STATE ────────────────────────────────────────────────
+let cfg={children:[],tasks:[],rewards:[],chores:[],extra:{perInterval:10,payScale:{}},group:{threshold:80,reward:'',tripGoal:600,tripReward:'',cycleStart:null}};
+let todayEvents=[];   // raw event rows for today
+let cyclePoints={};   // {child_id: cycle_total}
+let prizes=[];        // prize rows
+let payouts=[];       // payout summary rows
+// Local optimistic state derived from todayEvents
+let localTasks={};    // {child_id: {task_id: bool}}
+let localChore={};    // {child_id: string|null}
+let localExtra={};    // {child_id: mins}
+let localBonus={};    // {child_id: bonus pts added by admin}
+let tab='overview';
+let adm=false;
+
+// Derive local state from event list
+function deriveState(events){
+  localTasks={};localChore={};localExtra={};
+  cfg.children.forEach(c=>{
+    localTasks[c.id]={};localChore[c.id]=null;localExtra[c.id]=0;localBonus[c.id]=0;
+  });
+  // Process in order — latest wins for tasks/chore
+  const taskLatest={};
+  const choreLatest={};
+  events.forEach(ev=>{
+    const k=`${ev.child_id}:${ev.payload?.task_id}`;
+    if((ev.event_type==='task_done'||ev.event_type==='task_undone')&&ev.payload?.task_id!=='__bonus__') taskLatest[k]=ev;
+    if(ev.event_type==='chore_set'||ev.event_type==='chore_cleared') choreLatest[ev.child_id]=ev;
+    if(ev.event_type==='extra_mins_add') localExtra[ev.child_id]=(localExtra[ev.child_id]||0)+(ev.payload?.mins||0);
+    if(ev.event_type==='extra_mins_remove') localExtra[ev.child_id]=Math.max(0,(localExtra[ev.child_id]||0)-(ev.payload?.mins||0));
+    if(ev.event_type==='task_done'&&ev.payload?.task_id==='__bonus__'){
+      if(!localBonus[ev.child_id])localBonus[ev.child_id]=0;
+      localBonus[ev.child_id]+=(ev.payload?.pts||0);
+    }
+  });
+  Object.values(taskLatest).forEach(ev=>{
+    if(!localTasks[ev.child_id])localTasks[ev.child_id]={};
+    localTasks[ev.child_id][ev.payload.task_id]=(ev.event_type==='task_done');
+  });
+  Object.values(choreLatest).forEach(ev=>{
+    localChore[ev.child_id]=ev.event_type==='chore_set'?ev.payload.chore:null;
+  });
+}
+
+function getPts(id){
+  let p=0;
+  cfg.tasks.forEach(t=>{
+    if(t.isChore){if(localChore[id])p+=t.pts;}
+    else if(localTasks[id]?.[t.id])p+=t.pts;
+  });
+  p+=(localBonus[id]||0);
+  return p;
+}
+function mx(){return cfg.tasks.reduce((a,t)=>a+t.pts,0);}
+function getCycle(id){return cyclePoints[id]||0;}
+function getPayoutRow(id){return payouts.find(p=>p.child_id===id)||{total_owed:0,total_paid:0,outstanding:0};}
+function extraIntervals(id){return Math.floor((localExtra[id]||0)/(cfg.extra?.perInterval||10));}
+function extraPay(id){return+(extraIntervals(id)*(cfg.extra?.payScale?.[id]??0)).toFixed(2);}
+
+// ── SYNC ─────────────────────────────────────────────────
+function ss(st){
+  const dot=document.getElementById('sdot'),txt=document.getElementById('stxt');
+  if(!dot||!txt)return;
+  dot.className='sync-dot'+(st==='ok'?'':st==='syncing'?' syncing':' err');
+  txt.textContent=st==='ok'?'Live':st==='syncing'?'Syncing...':'Offline';
+}
+
+async function loadAll(){
+  ss('syncing');
+  try{
+    const data=await callFn('load',{day_key:todayKey()});
+    if(data.error)throw new Error(data.error);
+    cfg=data.config;
+    todayEvents=data.todayEvents||[];
+    // cyclePoints array → object
+    cyclePoints={};
+    (data.cyclePoints||[]).forEach(r=>{cyclePoints[r.child_id]=r.cycle_total;});
+    prizes=data.prizes||[];
+    payouts=data.payouts||[];
+    deriveState(todayEvents);
+    ss('ok');
+  }catch(e){
+    ss('err');
+    console.error(e);
+  }
+  render();
+}
+
+// Poll every 10s for changes from other devices
+setInterval(async()=>{
+  if(document.hidden||tab==='admin')return;
+  try{
+    const data=await callFn('load',{day_key:todayKey()});
+    if(data.error)return;
+    cfg=data.config;
+    todayEvents=data.todayEvents||[];
+    cyclePoints={};
+    (data.cyclePoints||[]).forEach(r=>{cyclePoints[r.child_id]=r.cycle_total;});
+    prizes=data.prizes||[];
+    payouts=data.payouts||[];
+    deriveState(todayEvents);
+    ss('ok');
+    render();
+  }catch(e){ss('err');}
+},10000);
+
+function toast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg;t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),2500);
+}
+function ck(){return'<svg class="ck-svg" viewBox="0 0 12 9"><polyline points="1,4.5 4.5,8 11,1"/></svg>';}
+
+// ── RENDER ───────────────────────────────────────────────
+function render(){
+  const tabs=document.getElementById('tabs'),scroll=document.getElementById('scroll');
+  if(!tabs||!scroll)return;
+  let th=`<div class="tab ${tab==='overview'?'on':''}" onclick="st('overview')">Overview</div>`;
+  cfg.children.forEach(c=>{th+=`<div class="tab ${tab===c.id?'on':''}" onclick="st('${c.id}')">${c.name}</div>`;});
+  th+=`<div class="tab ${tab==='history'?'on':''}" onclick="st('history')">&#128197; Log</div>`;
+  th+=`<div class="tab ${tab==='money'?'on':''}" onclick="st('money')">&#128176; Pay</div>`;
+  th+=`<div class="tab ${tab==='admin'?'on':''}" onclick="st('admin')">&#9881;</div>`;
+  tabs.innerHTML=th;
+  document.getElementById('hdr-date').textContent=new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});
+  const prevTop=scroll.scrollTop;
+  const tabChanged=scroll.dataset.tab!==tab;
+  if(tab==='overview')scroll.innerHTML=rOv();
+  else if(tab==='history'){scroll.innerHTML='<div style="padding:20px;text-align:center;color:var(--txt3)">Loading log...</div>';rHistory().then(h=>{const st2=scroll.scrollTop;scroll.innerHTML=h;scroll.scrollTop=st2;});}
+  else if(tab==='money')scroll.innerHTML=rMoney();
+  else if(tab==='admin')scroll.innerHTML=adm?rAdm():rLock();
+  else{const child=cfg.children.find(c=>c.id===tab);scroll.innerHTML=child?rChild(child):'';}
+  scroll.dataset.tab=tab;
+  scroll.scrollTop=tabChanged?0:prevTop;
+}
+function st(t){tab=t;render();}
+
+// ── OVERVIEW ─────────────────────────────────────────────
+function rOv(){
+  const m=mx();
+  const allG=m>0&&cfg.children.every(c=>gPct(c.id,m)>=cfg.group.threshold);
+  const bl=cfg.children.filter(c=>gPct(c.id,m)<cfg.group.threshold).map(c=>c.name);
+  const tripGoal=cfg.group.tripGoal||600;
+  const groupTotal=cfg.children.reduce((s,c)=>s+getCycle(c.id),0);
+  const tripPct=Math.min(100,Math.round(groupTotal/tripGoal*100));
+  const tripUnlocked=groupTotal>=tripGoal;
+  const indvTrip=cfg.rewards[cfg.rewards.length-1]?.pts||100;
+
+  let h='<div class="kid-grid">';
+  cfg.children.forEach(c=>{
+    const pts=getPts(c.id),pct=gPct(c.id,m),pass=pct>=cfg.group.threshold,warn=pct>=50&&!pass;
+    const cls=pass?'pass':warn?'warn':'fail',icon=pass?'✅':warn?'⚠️':'❌';
+    const wp=getCycle(c.id),wPct=Math.min(100,Math.round(wp/indvTrip*100));
+    h+=`<div class="kid-card ${cls}" onclick="${adm?'':'st(\'' + c.id + '\')'}" style="${adm?'cursor:default':''}">
+      <div class="kid-top"><div class="kid-name">${c.name}</div><div style="font-size:16px">${icon}</div></div>
+      <div class="kid-score">${pts}<span style="font-size:13px;font-weight:700"> / ${m}</span></div>
+      <div class="kid-score-sub">${pct}% &mdash; ${pass?'PASS':warn?'ALMOST':'FAIL'}</div>
+      <div class="mbar"><div class="mbar-f" style="width:${pct}%"></div></div>
+      <div style="margin-top:8px;font-size:11px;font-weight:700;color:var(--txt3)">Cycle: ${wp} / ${indvTrip} pts (${wPct}%)</div>
+      <div class="mbar" style="margin-top:3px"><div class="mbar-f" style="width:${wPct}%;background:${wp>=indvTrip?'var(--green)':'var(--amber)'}"></div></div>
+      ${adm?`<button style="margin-top:10px;width:100%;padding:6px;border-radius:7px;border:none;background:var(--green);color:#fff;font-family:'Nunito',sans-serif;font-size:12px;font-weight:800;cursor:pointer" onclick="event.stopPropagation();promptAddPts('${c.id}','${c.name}')">+ Add points</button>`:''}
+    </div>`;
+  });
+  h+=`</div>`;
+
+  h+=`<div class="group-box ${allG?'lit':''}">
+    <div class="group-title">${allG?'&#127881; Biweekly goal hit!':'Biweekly group goal'}</div>
+    <div class="group-sub">${allG?`Everyone hit ${cfg.group.threshold}%+ &mdash; ${cfg.group.reward}!`:`Everyone hits ${cfg.group.threshold}% &rarr; ${cfg.group.reward}${bl.length?'. Need: '+bl.join(', '):''}`}</div>
+  </div>`;
+
+  h+=`<div class="group-box ${tripUnlocked?'lit':''}" style="${!tripUnlocked?'background:var(--surf2);':''}">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+      <div class="group-title" style="margin-bottom:0">${tripUnlocked?'&#127881; Trip unlocked!':'&#127926; Group trip goal'}</div>
+      <div style="font-size:18px;font-weight:900;color:${tripUnlocked?'var(--green-dd)':'var(--txt)'}">${groupTotal}<span style="font-size:12px;font-weight:700;color:var(--txt3)"> / ${tripGoal}</span></div>
+    </div>
+    <div style="height:10px;background:rgba(0,0,0,.07);border-radius:5px;overflow:hidden;margin-bottom:7px">
+      <div style="height:100%;border-radius:5px;background:${tripUnlocked?'var(--green)':'var(--amber)'};width:${tripPct}%;transition:width .4s"></div>
+    </div>
+    <div class="group-sub">${tripUnlocked?`${cfg.group.tripReward} &mdash; let's go!`:`${tripPct}% there &mdash; need ${tripGoal-groupTotal} more pts &rarr; ${cfg.group.tripReward}`}</div>
+  </div>`;
+
+  const sorted=[...cfg.children].sort((a,b)=>getCycle(b.id)-getCycle(a.id));
+  h+='<div class="week-strip"><div class="week-title">Cycle totals</div>';
+  sorted.forEach(c=>{
+    const wp=getCycle(c.id),indvTrip2=cfg.rewards[cfg.rewards.length-1]?.pts||100;
+    const wpc=Math.min(100,Math.round(wp/indvTrip2*100));
+    const tr=[...cfg.rewards].filter(r=>wp>=r.pts).sort((a,b)=>b.pts-a.pts)[0];
+    const wc=wp>=indvTrip2?'wb-pass':wp>=(cfg.rewards[0]?.pts||25)?'wb-warn':'wb-fail';
+    h+=`<div class="week-row"><div class="week-name">${c.name}</div><div class="week-bar-wrap"><div class="week-bar-fill" style="width:${wpc}%"></div></div><div class="week-pts">${wp}pts</div><div class="week-badge ${wc}">${tr?tr.desc.slice(0,16):'none yet'}</div></div>`;
+  });
+  h+=`</div>`;
+  h+=`<div class="reset-row">
+    <button class="reset-btn danger" onclick="showMod('cycle')">&#8635; Reset cycle (admin)</button>
+  </div>`;
+  return h;
+}
+function gPct(id,m){return m>0?Math.min(100,Math.round(getPts(id)/m*100)):0;}
+
+// ── CHILD VIEW ───────────────────────────────────────────
+function rChild(child){
+  const id=child.id;
+  const pts=getPts(id),m=mx(),pct=gPct(id,m);
+  const pay=cfg.extra?.payScale?.[id]??0;
+  const ei=extraIntervals(id),ep=extraPay(id);
+  const wp=getCycle(id);
+  const cycleStart=cfg.group?.cycleStart||todayKey();
+
+  let h=`<div class="pts-hdr"><div class="pts-big">${pts}</div><div class="pts-meta"><div class="pts-lbl">today &mdash; max ${m}</div><div class="bar"><div class="bar-fill" style="width:${pct}%"></div></div><div class="bar-pct">${pct}% &mdash; ${pct>=cfg.group.threshold?'PASS ✅':pct>=50?'ALMOST ⚠️':'FAIL ❌'}</div></div></div>`;
+  h+=`<div class="week-hdr"><div class="week-hdr-lbl">&#127942; Cycle total</div><div><span class="week-hdr-pts">${wp}</span><span style="font-size:12px;color:var(--txt3);font-weight:600"> pts</span></div></div>`;
+
+  const ev=cfg.tasks.filter(t=>t.id!=='inVan'&&!t.isChore);
+  const mo=cfg.tasks.filter(t=>t.id==='inVan');
+  const ct=cfg.tasks.find(t=>t.isChore);
+
+  h+='<div class="sec-lbl">Evening tasks</div>';
+  ev.forEach(t=>{
+    const done=!!(localTasks[id]?.[t.id]);
+    let nm=t.name;
+    if(t.id==='inBed')nm=`In bed by ${child.bedtime}`;
+    if(t.id==='shower')nm=`Shower (${child.shower})`;
+    h+=`<div class="task-item ${done?'done':''}" onclick="tt('${id}','${t.id}',${t.pts},${done})">
+      <div class="cb">${done?ck():''}</div><span class="t-name">${nm}</span><span class="t-pts">${t.pts} pt${t.pts>1?'s':''}</span>
+    </div>`;
+  });
+
+  if(ct){
+    const hc=!!localChore[id];
+    h+=`<div class="chore-wrap ${hc?'done':''}" id="cw-${id}">
+      <div class="chore-hdr" onclick="tcg('${id}')">
+        <div class="cb">${hc?ck():''}</div>
+        <span class="t-name" style="font-size:14px">${localChore[id]||'House help &mdash; tap to pick'}</span>
+        <span class="t-pts">${ct.pts} pts</span>
+      </div>
+      <div class="chore-grid" id="cg-${id}" style="display:${hc?'none':'grid'}">
+        ${cfg.chores.map(ch=>`<div class="copt ${localChore[id]===ch?'sel':''}" data-cid="${id}" data-ch="${encodeURIComponent(ch)}" data-pts="${ct.pts}" onclick="pc(this)">${ch}</div>`).join('')}
+      </div>
+    </div>`;
+  }
+
+  h+=`<div class="extra-wrap">
+    <div class="extra-title">Extra help beyond 20 min &mdash; earns pay, not points</div>
+    <div class="extra-row">
+      <button class="xbtn" onclick="ce('${id}',-${cfg.extra?.perInterval||10})">&#8722;</button>
+      <span class="xval">${localExtra[id]||0}m</span>
+      <button class="xbtn" onclick="ce('${id}',${cfg.extra?.perInterval||10})">+</button>
+      <span class="xinfo">${ei>0?`<b>$${ep.toFixed(2)}</b> ready to log`:'add time to earn pay'}</span>
+    </div>
+    ${ei>0?`<button class="log-btn" onclick="promptLogPay('${id}')">&#128274; Log $${ep.toFixed(2)} to ${child.name}&rsquo;s balance</button>`:''}
+  </div>`;
+
+  if(mo.length){
+    h+='<div class="sec-lbl">Morning</div>';
+    mo.forEach(t=>{
+      const done=!!(localTasks[id]?.[t.id]);
+      h+=`<div class="task-item ${done?'done':''}" onclick="tt('${id}','${t.id}',${t.pts},${done})">
+        <div class="cb">${done?ck():''}</div><span class="t-name">${t.name}</span><span class="t-pts">${t.pts} pt</span>
+      </div>`;
+    });
+  }
+
+  // Prizes
+  h+=`<div class="sec-lbl">Prizes</div><div class="rew-wrap">`;
+  cfg.rewards.forEach(r=>{
+    const earned=wp>=r.pts;
+    const prizeRow=prizes.find(p=>p.child_id===id&&p.pts_threshold===r.pts&&p.cycle_start===cycleStart);
+    const received=!!prizeRow?.received_at;
+    h+=`<div class="rew-row">
+      <span class="rew-pts">${r.pts}pts</span>
+      <span class="rew-desc">${r.desc}</span>
+      ${earned
+        ?`<button class="rcv-btn ${received?'got':''}" onclick="togglePrize('${id}',${r.pts},'${r.desc.replace(/'/g,"\\'")}','${cycleStart}',${received})">${received?'&#10003; Got it':'Mark received'}</button>`
+        :`<span class="badge boff">need ${r.pts-wp}</span>`
+      }
+    </div>`;
+    // Auto-award prize if earned and not yet in DB
+    if(earned&&!prizeRow){
+      callFn('admin',{action:'award_prize',password:'__internal__',child_id:id,pts_threshold:r.pts,description:r.desc,cycle_start:cycleStart});
+    }
+  });
+  h+=`</div>`;
+  return h;
+}
+
+// ── HISTORY LOG ──────────────────────────────────────────
+async function rHistory(){
+  const r=await fetch(`${SB_URL}/rest/v1/snapshots?select=snapshot_date,child_id,points&order=snapshot_date.desc`,{headers:H});
+  const rows=await r.json();
+  if(!rows||!rows.length)return`<div style="padding:30px;text-align:center;color:var(--txt3);font-size:14px;line-height:1.7">No history yet.<br>Snapshots are saved automatically each night.</div>`;
+
+  // Group by date
+  const byDate={};
+  rows.forEach(row=>{
+    if(!byDate[row.snapshot_date])byDate[row.snapshot_date]=[];
+    byDate[row.snapshot_date].push(row);
+  });
+
+  let h=`<div style="margin-bottom:12px;display:flex;align-items:center;justify-content:space-between"><div class="sec-lbl" style="margin:0">Daily point log</div>${adm?'<span style="font-size:11px;color:var(--txt3)">Tap day to edit</span>':''}</div>`;
+
+  Object.keys(byDate).sort().reverse().forEach(date=>{
+    const dayRows=byDate[date];
+    const label=new Date(date+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'});
+    const grandTotal=dayRows.reduce((a,r)=>a+r.points,0);
+    h+=`<div class="log-day">
+      <div class="log-day-hdr" onclick="toggleLogDay('ld-${date}')">
+        <div class="log-day-date">${label}</div>
+        <div class="log-day-total">${grandTotal} pts</div>
+        <div style="font-size:11px;color:var(--txt3);margin-left:4px">&#9660;</div>
+      </div>
+      <div class="log-day-body" id="ld-${date}">`;
+    cfg.children.forEach(c=>{
+      const row=dayRows.find(r=>r.child_id===c.id);
+      const p=row?.points??0;
+      h+=`<div class="log-kid-row">
+        <div class="log-kid-name">${c.name}</div>
+        <div class="log-kid-pts">${p} pts</div>
+        <div style="flex:1"></div>
+        ${adm?`<button class="log-kid-edit" onclick="openEditPts('${date}','${c.id}','${c.name}',${p})">Edit</button>`:''}
+      </div>`;
+    });
+    h+=`</div></div>`;
+  });
+  if(!adm)h+=`<div style="font-size:12px;color:var(--txt3);text-align:center;padding:10px 0">&#128274; Unlock admin to edit past points</div>`;
+  return h;
+}
+
+function toggleLogDay(id){const el=document.getElementById(id);if(el)el.style.display=el.style.display==='block'?'none':'block';}
+
+function openEditPts(date,childId,name,currentPts){
+  const bg=document.getElementById('modal-bg');bg.style.display='flex';
+  bg.innerHTML=`<div class="modal">
+    <div class="modal-title">Edit &mdash; ${name}</div>
+    <div class="modal-body">${new Date(date+'T12:00:00').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}</div>
+    <input type="number" id="edit-pts-val" value="${currentPts}" min="0" max="99" style="width:100%;padding:11px;border-radius:9px;border:1px solid var(--bdr2);background:var(--surf2);font-size:22px;font-weight:800;color:var(--txt);text-align:center;font-family:'Nunito',sans-serif;margin-bottom:4px">
+    <div class="err-txt" id="edit-err" style="display:none">Incorrect password</div>
+    <input type="password" class="lock-input" id="edit-pw" placeholder="Admin password" style="margin-top:10px">
+    <div class="modal-btns">
+      <button class="mbtn mbtn-cancel" onclick="cm()">Cancel</button>
+      <button class="mbtn mbtn-grn" onclick="doEditPts('${date}','${childId}')">Save</button>
+    </div>
+  </div>`;
+}
+
+async function doEditPts(date,childId){
+  const pw=document.getElementById('edit-pw')?.value;
+  const pts=+document.getElementById('edit-pts-val')?.value;
+  const res=await callFn('admin',{action:'edit_snapshot',password:pw,snapshot_date:date,child_id:childId,points:pts});
+  if(res.error){const e=document.getElementById('edit-err');if(e){e.style.display='block';e.textContent=res.error;}return;}
+  cm();toast('Points updated');st('history');
+}
+
+// ── MONEY TRACKER ────────────────────────────────────────
+function rMoney(){
+  let h=`<div class="sec-lbl">Extra work pay</div>`;
+  let any=false;
+  cfg.children.forEach(c=>{
+    const payRate=cfg.extra?.payScale?.[c.id]??0;
+    if(payRate===0)return;
+    any=true;
+    const pr=getPayoutRow(c.id);
+    const owed=+(pr.total_owed||0);
+    const paid=+(pr.total_paid||0);
+    const outstanding=+(pr.outstanding||0);
+    const todayPending=extraPay(c.id);
+    h+=`<div class="money-card">
+      <div class="money-name">${c.name}</div>
+      ${todayPending>0?`<div class="money-row"><div class="money-lbl" style="color:var(--amber-d)">&#9888; Today (not yet logged): $${todayPending.toFixed(2)}</div></div>`:''}
+      <div class="money-row"><div class="money-lbl">Total owed</div><div class="money-amt owed">$${owed.toFixed(2)}</div></div>
+      <div class="money-row"><div class="money-lbl">Total paid</div><div class="money-amt paid-c">$${paid.toFixed(2)}</div></div>
+      <div class="money-row"><div class="money-lbl"><b>Outstanding</b></div><div class="money-amt owed" style="font-size:16px">$${outstanding>0?outstanding.toFixed(2):'0.00'}</div></div>
+      ${outstanding>0?`<div class="money-row" style="margin-top:6px"><button class="pay-btn grn" style="width:100%" onclick="promptMarkPaid('${c.id}',${outstanding},'${c.name}')">&#10003; Mark $${outstanding.toFixed(2)} paid to ${c.name}</button></div>`:''}
+    </div>`;
+  });
+  if(!any)h+=`<div style="padding:20px;text-align:center;color:var(--txt3);font-size:14px">No kids have a pay rate set. Go to Admin &#9881;</div>`;
+  h+=`<div style="font-size:12px;color:var(--txt3);padding:8px 4px;margin-top:4px;line-height:1.6">Use the &#128274; button on each child's tab to log pay (admin password required). "Mark paid" records cash handed over.</div>`;
+  return h;
+}
+
+function promptMarkPaid(id,amount,name){
+  const bg=document.getElementById('modal-bg');bg.style.display='flex';
+  bg.innerHTML=`<div class="modal">
+    <div class="modal-title">Mark payment &mdash; ${name}</div>
+    <div class="modal-body">Record that you paid <b>$${amount.toFixed(2)}</b> in cash.</div>
+    <div class="err-txt" id="pay-err" style="display:none">Incorrect password</div>
+    <input type="password" class="lock-input" id="pay-pw" placeholder="Admin password">
+    <div class="modal-btns">
+      <button class="mbtn mbtn-cancel" onclick="cm()">Cancel</button>
+      <button class="mbtn mbtn-grn" onclick="doMarkPaid('${id}',${amount})">Mark paid</button>
+    </div>
+  </div>`;
+}
+async function doMarkPaid(id,amount){
+  const pw=document.getElementById('pay-pw')?.value;
+  const res=await callFn('admin',{action:'mark_paid',password:pw,child_id:id,amount});
+  if(res.error){const e=document.getElementById('pay-err');if(e){e.style.display='block';e.textContent=res.error;}return;}
+  cm();
+  toast('Payment recorded!');
+  await loadAll();
+}
+
+function promptAddPts(id, name){
+  window._addPtsVal=null;
+  const bg=document.getElementById('modal-bg');bg.style.display='flex';
+  bg.innerHTML=`<div class="modal">
+    <div class="modal-title">Add points — ${name}</div>
+    <div class="modal-body">Added to today’s total and the cycle total.</div>
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <button onclick="selPts(1)" id="pts-opt-1" style="flex:1;padding:12px;border-radius:9px;border:1.5px solid var(--bdr2);background:var(--surf2);font-family:'Nunito',sans-serif;font-size:18px;font-weight:800;color:var(--txt);cursor:pointer">+1</button>
+      <button onclick="selPts(2)" id="pts-opt-2" style="flex:1;padding:12px;border-radius:9px;border:1.5px solid var(--bdr2);background:var(--surf2);font-family:'Nunito',sans-serif;font-size:18px;font-weight:800;color:var(--txt);cursor:pointer">+2</button>
+      <button onclick="selPts(3)" id="pts-opt-3" style="flex:1;padding:12px;border-radius:9px;border:1.5px solid var(--bdr2);background:var(--surf2);font-family:'Nunito',sans-serif;font-size:18px;font-weight:800;color:var(--txt);cursor:pointer">+3</button>
+      <button onclick="selPts(5)" id="pts-opt-5" style="flex:1;padding:12px;border-radius:9px;border:1.5px solid var(--bdr2);background:var(--surf2);font-family:'Nunito',sans-serif;font-size:18px;font-weight:800;color:var(--txt);cursor:pointer">+5</button>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+      <label style="font-size:13px;color:var(--txt2);white-space:nowrap">Custom:</label>
+      <input type="number" id="pts-custom" min="1" max="20" placeholder="pts" oninput="window._addPtsVal=null;[1,2,3,5].forEach(x=>{const el=document.getElementById('pts-opt-'+x);if(el){el.style.background='';el.style.color='var(--txt)';el.style.borderColor='var(--bdr2)';}});" style="flex:1;padding:8px 10px;border-radius:7px;border:1px solid var(--bdr2);background:var(--surf2);font-size:15px;font-weight:800;color:var(--txt);font-family:'Nunito',sans-serif;text-align:center">
+    </div>
+    <input type="text" id="pts-reason" placeholder="Reason (optional)" style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--bdr2);background:var(--surf2);font-size:13px;font-family:'Nunito',sans-serif;color:var(--txt);margin-bottom:12px">
+    <div class="err-txt" id="pts-err" style="display:none">Please select or enter points first</div>
+    <div class="modal-btns">
+      <button class="mbtn mbtn-cancel" onclick="cm()">Cancel</button>
+      <button class="mbtn mbtn-grn" onclick="doAddPts('${id}')">Add points</button>
+    </div>
+  </div>`;
+}
+
+function selPts(n){
+  window._addPtsVal=n;
+  [1,2,3,5].forEach(x=>{
+    const el=document.getElementById('pts-opt-'+x);
+    if(!el)return;
+    el.style.background=x===n?'var(--green)':'var(--surf2)';
+    el.style.color=x===n?'#fff':'var(--txt)';
+    el.style.borderColor=x===n?'var(--green)':'var(--bdr2)';
+  });
+  const custom=document.getElementById('pts-custom');
+  if(custom)custom.value='';
+}
+
+async function doAddPts(id){
+  const customEl=document.getElementById('pts-custom');
+  const custom=customEl?+customEl.value:0;
+  const pts=custom>0?custom:(window._addPtsVal||0);
+  if(!pts||pts<=0){
+    const e=document.getElementById('pts-err');
+    if(e)e.style.display='block';
+    return;
+  }
+  const reason=(document.getElementById('pts-reason')?.value||'').trim();
+  if(!localBonus[id])localBonus[id]=0;
+  localBonus[id]+=pts;
+  cyclePoints[id]=(cyclePoints[id]||0)+pts;
+  cm();
+  render();
+  toast('+'+pts+' pts added to '+(cfg.children.find(c=>c.id===id)?.name||id)+'!');
+  await insertEvent('task_done', id, {task_id:'__bonus__', pts, reason});
+  checkPrizes(id);
+  setTimeout(()=>loadAll(),2000);
+}
+
+function promptLogPay(id){
+  const ep=extraPay(id);
+  const name=cfg.children.find(c=>c.id===id)?.name||id;
+  const bg=document.getElementById('modal-bg');bg.style.display='flex';
+  bg.innerHTML=`<div class="modal">
+    <div class="modal-title">Log pay &mdash; ${name}</div>
+    <div class="modal-body">Add <b>$${ep.toFixed(2)}</b> to ${name}'s owed balance.</div>
+    <div class="err-txt" id="lpw-err" style="display:none">Incorrect password</div>
+    <input type="password" class="lock-input" id="lpw-inp" placeholder="Admin password">
+    <div class="modal-btns">
+      <button class="mbtn mbtn-cancel" onclick="cm()">Cancel</button>
+      <button class="mbtn mbtn-amb" onclick="doLogPay('${id}',${ep})">Log $${ep.toFixed(2)}</button>
+    </div>
+  </div>`;
+}
+async function doLogPay(id,amount){
+  const pw=document.getElementById('lpw-inp')?.value;
+  const res=await callFn('admin',{action:'log_owed',password:pw,child_id:id,amount});
+  if(res.error){const e=document.getElementById('lpw-err');if(e){e.style.display='block';e.textContent=res.error;}return;}
+  // Zero out local extra mins
+  const mins=localExtra[id]||0;
+  if(mins>0){
+    await insertEvent('extra_mins_remove',id,{mins});
+    localExtra[id]=0;
+  }
+  cm();toast(`$${amount.toFixed(2)} logged!`);await loadAll();
+}
+
+// ── ADMIN ────────────────────────────────────────────────
+function rLock(){
+  return`<div class="lock-card">
+    <div class="lock-title">&#128274; Admin</div>
+    <div class="lock-sub">Password verified server-side. Unlocks editing, cycle reset, and history edits.</div>
+    <div class="err-txt" id="pw-err" style="display:none">Incorrect password</div>
+    <input type="password" class="lock-input" id="pw-input" placeholder="Password" onkeydown="if(event.key==='Enter')tl()">
+    <button class="lock-btn" onclick="tl()">Unlock</button>
+  </div>`;
+}
+async function tl(){
+  const v=document.getElementById('pw-input')?.value;
+  // Verify against server
+  const res=await callFn('admin',{action:'save_config',password:v,config:cfg});
+  if(res.error&&res.error==='Incorrect password'){
+    const e=document.getElementById('pw-err');if(e)e.style.display='block';return;
+  }
+  adm=true;render();
+}
+
+function rAdm(){
+  let h=`<div class="adm"><div style="display:flex;justify-content:flex-end;margin-bottom:14px"><button class="adm-add" onclick="adm=false;render()">&#128274; Lock</button></div>`;
+  h+='<div class="adm-sec"><div class="adm-stitle">Tasks &amp; points</div>';
+  cfg.tasks.forEach((t,i)=>{h+=`<div class="adm-row"><div class="adm-lbl">${t.name}${t.isChore?'<div class="adm-sub">chore picker</div>':''}</div><input class="adm-num" type="number" min="0" max="10" value="${t.pts}" oninput="cfg.tasks[${i}].pts=+this.value"></div>`;});
+  h+='</div><div class="adm-sec"><div class="adm-stitle">Prizes (cycle points needed)</div>';
+  cfg.rewards.forEach((r,i)=>{h+=`<div class="adm-row"><input class="adm-num" type="number" min="0" value="${r.pts}" oninput="cfg.rewards[${i}].pts=+this.value" style="width:56px;flex-shrink:0"><input class="adm-txt" type="text" value="${r.desc}" oninput="cfg.rewards[${i}].desc=this.value"><button class="adm-del" onclick="cfg.rewards.splice(${i},1);render()">&#215;</button></div>`;});
+  h+=`<button class="adm-add" onclick="cfg.rewards.push({pts:0,desc:'New prize'});render()">+ Add prize</button></div>`;
+  h+=`<div class="adm-sec"><div class="adm-stitle">Biweekly group goal</div>
+    <div class="adm-row"><div class="adm-lbl">Pass threshold %</div><input class="adm-num" type="number" min="1" max="100" value="${cfg.group.threshold}" oninput="cfg.group.threshold=+this.value"></div>
+    <div class="adm-row"><div class="adm-lbl">Prize when all pass</div><input class="adm-txt" type="text" value="${cfg.group.reward}" oninput="cfg.group.reward=this.value"></div>
+    <div class="adm-row"><div class="adm-lbl">Group trip points needed</div><input class="adm-num" type="number" min="1" value="${cfg.group.tripGoal||600}" oninput="cfg.group.tripGoal=+this.value" style="width:70px"></div>
+    <div class="adm-row"><div class="adm-lbl">Trip reward</div><input class="adm-txt" type="text" value="${cfg.group.tripReward||''}" oninput="cfg.group.tripReward=this.value"></div>
+  </div>`;
+  h+=`<div class="adm-sec"><div class="adm-stitle">Extra work pay</div>
+    <div class="adm-row"><div class="adm-lbl">Minutes per interval</div><input class="adm-num" type="number" min="1" value="${cfg.extra?.perInterval||10}" oninput="cfg.extra.perInterval=+this.value"></div>
+    <div class="adm-stitle" style="margin-top:12px">Pay per interval ($)</div>`;
+  cfg.children.forEach(c=>{h+=`<div class="adm-row"><div class="adm-lbl">${c.name}<div class="adm-sub">age ${c.age}</div></div><input class="adm-num" type="number" min="0" step="0.5" value="${cfg.extra?.payScale?.[c.id]??0}" oninput="cfg.extra.payScale['${c.id}']=+this.value"></div>`;});
+  h+='</div><div class="adm-sec"><div class="adm-stitle">Children</div>';
+  cfg.children.forEach((c,i)=>{h+=`<div class="adm-row"><div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;flex:1"><input class="adm-txt" type="text" value="${c.name}" oninput="cfg.children[${i}].name=this.value"><input class="adm-txt" type="number" min="1" max="18" value="${c.age}" oninput="cfg.children[${i}].age=+this.value"><input class="adm-txt" type="text" value="${c.bedtime}" placeholder="Bedtime" oninput="cfg.children[${i}].bedtime=this.value"><input class="adm-txt" type="text" value="${c.shower}" placeholder="Shower days" oninput="cfg.children[${i}].shower=this.value"></div><button class="adm-del" onclick="cfg.children.splice(${i},1);render()">&#215;</button></div>`;});
+  h+=`<button class="adm-add" onclick="ac()">+ Add child</button></div>`;
+  h+='<div class="adm-sec"><div class="adm-stitle">Chore options</div>';
+  cfg.chores.forEach((ch,i)=>{h+=`<div class="adm-row"><input class="adm-txt" type="text" value="${ch}" oninput="cfg.chores[${i}]=this.value"><button class="adm-del" onclick="cfg.chores.splice(${i},1);render()">&#215;</button></div>`;});
+  h+=`<button class="adm-add" onclick="cfg.chores.push('New chore');render()">+ Add chore</button></div>`;
+  h+=`<button class="adm-save" onclick="sc()">&#10003; Save all settings</button></div>`;
+  return h;
+}
+function ac(){const id='kid'+Date.now();cfg.children.push({id,name:'New child',age:10,bedtime:'9:00pm',shower:'Mon/Wed/Fri'});if(!cfg.extra.payScale)cfg.extra.payScale={};cfg.extra.payScale[id]=0;render();}
+async function sc(){
+  const res=await callFn('admin',{action:'save_config',password:'__verified__',config:cfg});
+  if(res.error){toast('Save failed: '+res.error);return;}
+  adm=false;tab='overview';toast('Settings saved!');await loadAll();
+}
+
+// ── TASK INTERACTIONS ────────────────────────────────────
+function tt(id,tid,pts,wasDone){
+  // Optimistic update
+  if(!localTasks[id])localTasks[id]={};
+  localTasks[id][tid]=!wasDone;
+  render();
+  // Persist to DB
+  const etype=wasDone?'task_undone':'task_done';
+  insertEvent(etype,id,{task_id:tid,pts});
+  // Check prize thresholds
+  checkPrizes(id);
+}
+
+function tcg(id){const el=document.getElementById('cg-'+id);if(el)el.style.display=el.style.display==='none'?'grid':'none';}
+
+function pc(el){
+  const id=el.dataset.cid,chore=decodeURIComponent(el.dataset.ch),pts=+el.dataset.pts;
+  const hadChore=localChore[id];
+  const same=hadChore===chore;
+  // Optimistic
+  localChore[id]=same?null:chore;
+  render();
+  // If clearing same chore
+  if(same){insertEvent('chore_cleared',id,{pts});}
+  // If switching chores, clear old then set new
+  else{
+    if(hadChore)insertEvent('chore_cleared',id,{pts});
+    insertEvent('chore_set',id,{chore,pts});
+  }
+  checkPrizes(id);
+}
+
+function ce(id,delta){
+  const interval=cfg.extra?.perInterval||10;
+  const cur=localExtra[id]||0;
+  const next=Math.max(0,cur+delta);
+  localExtra[id]=next;
+  render();
+  if(delta>0)insertEvent('extra_mins_add',id,{mins:Math.abs(delta)});
+  else if(cur>0)insertEvent('extra_mins_remove',id,{mins:Math.min(Math.abs(delta),cur)});
+}
+
+function checkPrizes(id){
+  const wp=getCycle(id);
+  const cycleStart=cfg.group?.cycleStart||todayKey();
+  cfg.rewards.forEach(r=>{
+    if(wp>=r.pts){
+      const already=prizes.find(p=>p.child_id===id&&p.pts_threshold===r.pts&&p.cycle_start===cycleStart);
+      if(!already){
+        // Award via admin function (no password needed for internal award)
+        callFn('admin',{action:'award_prize',password:'__internal__',child_id:id,pts_threshold:r.pts,description:r.desc,cycle_start:cycleStart})
+          .then(()=>loadAll());
+      }
+    }
+  });
+}
+
+async function togglePrize(id,pts,desc,cycleStart,currentlyReceived){
+  const res=await callFn('admin',{
+    action:'toggle_prize_received',
+    password:'__verified__',
+    child_id:id,pts_threshold:pts,cycle_start:cycleStart,
+    received:!currentlyReceived
+  });
+  if(res.error){toast('Error: '+res.error);return;}
+  await loadAll();
+}
+
+// ── MODALS ───────────────────────────────────────────────
+function showMod(type){
+  const bg=document.getElementById('modal-bg');bg.style.display='flex';
+  if(type==='cycle'){
+    bg.innerHTML=`<div class="modal">
+      <div class="modal-title">Reset earning cycle</div>
+      <div class="modal-body">This starts a new earning window. All cycle totals reset to zero. Past history and money records are kept. Enter admin password to confirm.</div>
+      <div class="err-txt" id="cyc-err" style="display:none">Incorrect password</div>
+      <input type="password" class="lock-input" id="cyc-pw" placeholder="Admin password">
+      <div class="modal-btns">
+        <button class="mbtn mbtn-cancel" onclick="cm()">Cancel</button>
+        <button class="mbtn mbtn-del" onclick="doCycleReset()">Reset cycle</button>
+      </div>
+    </div>`;
+  }
+}
+function cm(){document.getElementById('modal-bg').style.display='none';}
+
+async function doCycleReset(){
+  const pw=document.getElementById('cyc-pw')?.value;
+  const res=await callFn('admin',{action:'cycle_reset',password:pw,day_key:todayKey()});
+  if(res.error){const e=document.getElementById('cyc-err');if(e){e.style.display='block';e.textContent=res.error;}return;}
+  cm();toast('New cycle started!');await loadAll();
+}
+
+loadAll();
+</script>
+</body>
+</html>
