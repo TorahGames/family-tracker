@@ -202,13 +202,30 @@ async function callFn(name,body){
   const r=await fetch(`${FN}/${name}`,{method:'POST',headers:H,body:JSON.stringify(body)});
   return r.json();
 }
+let pendingWrites=0;  // blocks poll from overwriting while writes are in flight
+
 async function insertEvent(event_type,child_id,payload){
-  // Optimistic: already applied locally. This syncs to DB.
-  await fetch(`${SB_URL}/rest/v1/events`,{
-    method:'POST',
-    headers:{...H,'Prefer':'return=minimal'},
-    body:JSON.stringify({day_key:todayKey(),child_id,event_type,payload})
-  });
+  pendingWrites++;
+  try{
+    const res=await fetch(`${SB_URL}/rest/v1/events`,{
+      method:'POST',
+      headers:{...H,'Prefer':'return=minimal'},
+      body:JSON.stringify({day_key:todayKey(),child_id,event_type,payload})
+    });
+    if(!res.ok){
+      console.error('Event insert failed',event_type,child_id,res.status,await res.text());
+      await loadAll();  // restore true state from DB
+      toast('Sync error — refreshed from server');
+      return false;
+    }
+    return true;
+  }catch(e){
+    console.error('Event insert error',e);
+    toast('Connection error — check your network');
+    return false;
+  }finally{
+    pendingWrites=Math.max(0,pendingWrites-1);  // single decrement, always runs
+  }
 }
 
 // ── STATE ────────────────────────────────────────────────
@@ -224,6 +241,7 @@ let localExtra={};    // {child_id: mins}
 let localBonus={};    // {child_id: bonus pts added by admin}
 let tab='overview';
 let adm=false;
+let draftCfg=null;  // copy of cfg edited in admin panel — only applied on Save
 
 // Derive local state from event list
 function deriveState(events){
@@ -298,12 +316,15 @@ async function loadAll(){
   render();
 }
 
-// Poll every 10s for changes from other devices
+// Poll every 15s for changes from other devices.
+// Skips if any writes are still in flight to prevent erasing optimistic updates.
 setInterval(async()=>{
   if(document.hidden||tab==='admin')return;
+  if(pendingWrites>0)return;  // don't overwrite while user actions are still saving
   try{
     const data=await callFn('load',{day_key:todayKey()});
     if(data.error)return;
+    if(pendingWrites>0)return;  // check again after the async wait
     cfg=data.config;
     todayEvents=data.todayEvents||[];
     cyclePoints={};
@@ -314,7 +335,7 @@ setInterval(async()=>{
     ss('ok');
     render();
   }catch(e){ss('err');}
-},10000);
+},15000);
 
 function toast(msg){
   const t=document.getElementById('toast');
@@ -494,20 +515,54 @@ function rChild(child){
 
 // ── HISTORY LOG ──────────────────────────────────────────
 async function rHistory(){
+  // Load both today's live points (from local state) and past snapshots
   const r=await fetch(`${SB_URL}/rest/v1/snapshots?select=snapshot_date,child_id,points&order=snapshot_date.desc`,{headers:H});
-  const rows=await r.json();
-  if(!rows||!rows.length)return`<div style="padding:30px;text-align:center;color:var(--txt3);font-size:14px;line-height:1.7">No history yet.<br>Snapshots are saved automatically each night.</div>`;
+  const snapRows=await r.json()||[];
 
-  // Group by date
+  const todayDate=todayKey();
+
+  // Group snapshots by date
   const byDate={};
-  rows.forEach(row=>{
+  snapRows.forEach(row=>{
     if(!byDate[row.snapshot_date])byDate[row.snapshot_date]=[];
     byDate[row.snapshot_date].push(row);
   });
 
-  let h=`<div style="margin-bottom:12px;display:flex;align-items:center;justify-content:space-between"><div class="sec-lbl" style="margin:0">Daily point log</div>${adm?'<span style="font-size:11px;color:var(--txt3)">Tap day to edit</span>':''}</div>`;
+  // If today has no snapshot yet, prepend it as a live entry
+  const allDates=[...Object.keys(byDate)].sort().reverse();
+  const hasTodaySnap=allDates.includes(todayDate);
 
-  Object.keys(byDate).sort().reverse().forEach(date=>{
+  let h=`<div style="margin-bottom:12px;display:flex;align-items:center;justify-content:space-between">
+    <div class="sec-lbl" style="margin:0">Daily point log</div>
+    ${adm?'<span style="font-size:11px;color:var(--txt3)">Tap day to edit</span>':''}
+  </div>`;
+
+  // Always show today live at the top
+  const todayLabel=new Date().toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'});
+  const todayTotal=cfg.children.reduce((a,c)=>a+getPts(c.id),0);
+  h+=`<div class="log-day" style="border-color:var(--green-m);background:var(--green-l)">
+    <div class="log-day-hdr" onclick="toggleLogDay('ld-today')" style="background:var(--green-l)">
+      <div class="log-day-date" style="color:var(--green-dd)">${todayLabel} <span style="font-size:10px;font-weight:700;padding:2px 7px;background:var(--green);color:#fff;border-radius:99px;margin-left:4px">LIVE</span></div>
+      <div class="log-day-total">${todayTotal} pts</div>
+      <div style="font-size:11px;color:var(--green-d);margin-left:4px">&#9660;</div>
+    </div>
+    <div class="log-day-body" id="ld-today">`;
+  cfg.children.forEach(c=>{
+    const p=getPts(c.id);
+    h+=`<div class="log-kid-row">
+      <div class="log-kid-name">${c.name}</div>
+      <div class="log-kid-pts">${p} pts</div>
+    </div>`;
+  });
+  h+=`</div></div>`;
+
+  if(allDates.length===0&&!hasTodaySnap){
+    h+=`<div style="padding:20px;text-align:center;color:var(--txt3);font-size:13px;line-height:1.7">Past days appear here automatically each morning.<br>Today's live points are shown above.</div>`;
+  }
+
+  // Past snapshots
+  allDates.forEach(date=>{
+    if(date===todayDate)return;  // skip today if it has a snapshot (live entry is above)
     const dayRows=byDate[date];
     const label=new Date(date+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'});
     const grandTotal=dayRows.reduce((a,r)=>a+r.points,0);
@@ -664,7 +719,7 @@ async function doAddPts(id){
   toast('+'+pts+' pts added to '+(cfg.children.find(c=>c.id===id)?.name||id)+'!');
   await insertEvent('task_done', id, {task_id:'__bonus__', pts, reason});
   checkPrizes(id);
-  setTimeout(()=>loadAll(),2000);
+  // No forced reload — poll will sync when pendingWrites reaches 0
 }
 
 function promptLogPay(id){
@@ -707,44 +762,65 @@ function rLock(){
 }
 async function tl(){
   const v=document.getElementById('pw-input')?.value;
-  // Verify against server
+  // Verify password by calling verify action (save_config with current cfg is a no-op here)
   const res=await callFn('admin',{action:'save_config',password:v,config:cfg});
   if(res.error&&res.error==='Incorrect password'){
     const e=document.getElementById('pw-err');if(e)e.style.display='block';return;
   }
-  adm=true;render();
+  adm=true;
+  draftCfg=JSON.parse(JSON.stringify(cfg));  // deep clone — edits go here, not into live cfg
+  render();
 }
 
 function rAdm(){
-  let h=`<div class="adm"><div style="display:flex;justify-content:flex-end;margin-bottom:14px"><button class="adm-add" onclick="adm=false;render()">&#128274; Lock</button></div>`;
+  // All inputs read from and write to draftCfg only.
+  // live cfg is never touched until Save is confirmed.
+  const d=draftCfg;
+  if(!d)return'';
+  let h=`<div class="adm"><div style="display:flex;justify-content:flex-end;margin-bottom:14px"><button class="adm-add" onclick="adm=false;draftCfg=null;render()">&#128274; Lock (discard changes)</button></div>`;
   h+='<div class="adm-sec"><div class="adm-stitle">Tasks &amp; points</div>';
-  cfg.tasks.forEach((t,i)=>{h+=`<div class="adm-row"><div class="adm-lbl">${t.name}${t.isChore?'<div class="adm-sub">chore picker</div>':''}</div><input class="adm-num" type="number" min="0" max="10" value="${t.pts}" oninput="cfg.tasks[${i}].pts=+this.value"></div>`;});
+  d.tasks.forEach((t,i)=>{h+=`<div class="adm-row"><div class="adm-lbl">${t.name}${t.isChore?'<div class="adm-sub">chore picker</div>':''}</div><input class="adm-num" type="number" min="0" max="10" value="${t.pts}" oninput="draftCfg.tasks[${i}].pts=+this.value"></div>`;});
   h+='</div><div class="adm-sec"><div class="adm-stitle">Prizes (cycle points needed)</div>';
-  cfg.rewards.forEach((r,i)=>{h+=`<div class="adm-row"><input class="adm-num" type="number" min="0" value="${r.pts}" oninput="cfg.rewards[${i}].pts=+this.value" style="width:56px;flex-shrink:0"><input class="adm-txt" type="text" value="${r.desc}" oninput="cfg.rewards[${i}].desc=this.value"><button class="adm-del" onclick="cfg.rewards.splice(${i},1);render()">&#215;</button></div>`;});
-  h+=`<button class="adm-add" onclick="cfg.rewards.push({pts:0,desc:'New prize'});render()">+ Add prize</button></div>`;
+  d.rewards.forEach((r,i)=>{h+=`<div class="adm-row"><input class="adm-num" type="number" min="0" value="${r.pts}" oninput="draftCfg.rewards[${i}].pts=+this.value" style="width:56px;flex-shrink:0"><input class="adm-txt" type="text" value="${r.desc}" oninput="draftCfg.rewards[${i}].desc=this.value"><button class="adm-del" onclick="draftCfg.rewards.splice(${i},1);render()">&#215;</button></div>`;});
+  h+=`<button class="adm-add" onclick="draftCfg.rewards.push({pts:0,desc:'New prize'});render()">+ Add prize</button></div>`;
   h+=`<div class="adm-sec"><div class="adm-stitle">Biweekly group goal</div>
-    <div class="adm-row"><div class="adm-lbl">Pass threshold %</div><input class="adm-num" type="number" min="1" max="100" value="${cfg.group.threshold}" oninput="cfg.group.threshold=+this.value"></div>
-    <div class="adm-row"><div class="adm-lbl">Prize when all pass</div><input class="adm-txt" type="text" value="${cfg.group.reward}" oninput="cfg.group.reward=this.value"></div>
-    <div class="adm-row"><div class="adm-lbl">Group trip points needed</div><input class="adm-num" type="number" min="1" value="${cfg.group.tripGoal||600}" oninput="cfg.group.tripGoal=+this.value" style="width:70px"></div>
-    <div class="adm-row"><div class="adm-lbl">Trip reward</div><input class="adm-txt" type="text" value="${cfg.group.tripReward||''}" oninput="cfg.group.tripReward=this.value"></div>
+    <div class="adm-row"><div class="adm-lbl">Pass threshold %</div><input class="adm-num" type="number" min="1" max="100" value="${d.group.threshold}" oninput="draftCfg.group.threshold=+this.value"></div>
+    <div class="adm-row"><div class="adm-lbl">Prize when all pass</div><input class="adm-txt" type="text" value="${d.group.reward}" oninput="draftCfg.group.reward=this.value"></div>
+    <div class="adm-row"><div class="adm-lbl">Group trip points needed</div><input class="adm-num" type="number" min="1" value="${d.group.tripGoal||600}" oninput="draftCfg.group.tripGoal=+this.value" style="width:70px"></div>
+    <div class="adm-row"><div class="adm-lbl">Trip reward</div><input class="adm-txt" type="text" value="${d.group.tripReward||''}" oninput="draftCfg.group.tripReward=this.value"></div>
   </div>`;
   h+=`<div class="adm-sec"><div class="adm-stitle">Extra work pay</div>
-    <div class="adm-row"><div class="adm-lbl">Minutes per interval</div><input class="adm-num" type="number" min="1" value="${cfg.extra?.perInterval||10}" oninput="cfg.extra.perInterval=+this.value"></div>
+    <div class="adm-row"><div class="adm-lbl">Minutes per interval</div><input class="adm-num" type="number" min="1" value="${d.extra?.perInterval||10}" oninput="draftCfg.extra.perInterval=+this.value"></div>
     <div class="adm-stitle" style="margin-top:12px">Pay per interval ($)</div>`;
-  cfg.children.forEach(c=>{h+=`<div class="adm-row"><div class="adm-lbl">${c.name}<div class="adm-sub">age ${c.age}</div></div><input class="adm-num" type="number" min="0" step="0.5" value="${cfg.extra?.payScale?.[c.id]??0}" oninput="cfg.extra.payScale['${c.id}']=+this.value"></div>`;});
+  d.children.forEach(c=>{h+=`<div class="adm-row"><div class="adm-lbl">${c.name}<div class="adm-sub">age ${c.age}</div></div><input class="adm-num" type="number" min="0" step="0.5" value="${d.extra?.payScale?.[c.id]??0}" oninput="draftCfg.extra.payScale['${c.id}']=+this.value"></div>`;});
   h+='</div><div class="adm-sec"><div class="adm-stitle">Children</div>';
-  cfg.children.forEach((c,i)=>{h+=`<div class="adm-row"><div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;flex:1"><input class="adm-txt" type="text" value="${c.name}" oninput="cfg.children[${i}].name=this.value"><input class="adm-txt" type="number" min="1" max="18" value="${c.age}" oninput="cfg.children[${i}].age=+this.value"><input class="adm-txt" type="text" value="${c.bedtime}" placeholder="Bedtime" oninput="cfg.children[${i}].bedtime=this.value"><input class="adm-txt" type="text" value="${c.shower}" placeholder="Shower days" oninput="cfg.children[${i}].shower=this.value"></div><button class="adm-del" onclick="cfg.children.splice(${i},1);render()">&#215;</button></div>`;});
+  d.children.forEach((c,i)=>{h+=`<div class="adm-row"><div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;flex:1">
+    <input class="adm-txt" type="text" value="${c.name}" placeholder="Name" oninput="draftCfg.children[${i}].name=this.value">
+    <input class="adm-txt" type="number" min="1" max="18" value="${c.age}" oninput="draftCfg.children[${i}].age=+this.value">
+    <input class="adm-txt" type="text" value="${c.bedtime}" placeholder="Bedtime" oninput="draftCfg.children[${i}].bedtime=this.value">
+    <input class="adm-txt" type="text" value="${c.shower}" placeholder="Shower days" oninput="draftCfg.children[${i}].shower=this.value">
+  </div><button class="adm-del" onclick="draftCfg.children.splice(${i},1);render()">&#215;</button></div>`;});
   h+=`<button class="adm-add" onclick="ac()">+ Add child</button></div>`;
   h+='<div class="adm-sec"><div class="adm-stitle">Chore options</div>';
-  cfg.chores.forEach((ch,i)=>{h+=`<div class="adm-row"><input class="adm-txt" type="text" value="${ch}" oninput="cfg.chores[${i}]=this.value"><button class="adm-del" onclick="cfg.chores.splice(${i},1);render()">&#215;</button></div>`;});
-  h+=`<button class="adm-add" onclick="cfg.chores.push('New chore');render()">+ Add chore</button></div>`;
+  d.chores.forEach((ch,i)=>{h+=`<div class="adm-row"><input class="adm-txt" type="text" value="${ch}" oninput="draftCfg.chores[${i}]=this.value"><button class="adm-del" onclick="draftCfg.chores.splice(${i},1);render()">&#215;</button></div>`;});
+  h+=`<button class="adm-add" onclick="draftCfg.chores.push('New chore');render()">+ Add chore</button></div>`;
   h+=`<button class="adm-save" onclick="sc()">&#10003; Save all settings</button></div>`;
   return h;
 }
-function ac(){const id='kid'+Date.now();cfg.children.push({id,name:'New child',age:10,bedtime:'9:00pm',shower:'Mon/Wed/Fri'});if(!cfg.extra.payScale)cfg.extra.payScale={};cfg.extra.payScale[id]=0;render();}
+function ac(){
+  if(!draftCfg)return;
+  const id='kid'+Date.now();
+  draftCfg.children.push({id,name:'New child',age:10,bedtime:'9:00pm',shower:'Mon/Wed/Fri'});
+  if(!draftCfg.extra.payScale)draftCfg.extra.payScale={};
+  draftCfg.extra.payScale[id]=0;
+  render();
+}
 async function sc(){
-  const res=await callFn('admin',{action:'save_config',password:'__verified__',config:cfg});
+  if(!draftCfg){toast('Nothing to save');return;}
+  const res=await callFn('admin',{action:'save_config',password:'__verified__',config:draftCfg});
   if(res.error){toast('Save failed: '+res.error);return;}
+  cfg=JSON.parse(JSON.stringify(draftCfg));  // apply draft to live cfg on confirmed save
+  draftCfg=null;
   adm=false;tab='overview';toast('Settings saved!');await loadAll();
 }
 
@@ -797,9 +873,10 @@ function checkPrizes(id){
     if(wp>=r.pts){
       const already=prizes.find(p=>p.child_id===id&&p.pts_threshold===r.pts&&p.cycle_start===cycleStart);
       if(!already){
-        // Award via admin function (no password needed for internal award)
-        callFn('admin',{action:'award_prize',password:'__internal__',child_id:id,pts_threshold:r.pts,description:r.desc,cycle_start:cycleStart})
-          .then(()=>loadAll());
+        // Optimistically add to local prizes so button shows immediately
+        prizes.push({child_id:id,pts_threshold:r.pts,description:r.desc,cycle_start:cycleStart,earned_at:new Date().toISOString(),received_at:null});
+        // Fire-and-forget — no loadAll() here, that's what was erasing optimistic state
+        callFn('admin',{action:'award_prize',password:'__internal__',child_id:id,pts_threshold:r.pts,description:r.desc,cycle_start:cycleStart});
       }
     }
   });
