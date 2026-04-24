@@ -762,9 +762,8 @@ function rLock(){
 }
 async function tl(){
   const v=document.getElementById('pw-input')?.value;
-  // Verify password by calling verify action (save_config with current cfg is a no-op here)
-  const res=await callFn('admin',{action:'save_config',password:v,config:cfg});
-  if(res.error&&res.error==='Incorrect password'){
+  const res=await callFn('admin',{action:'verify',password:v});
+  if(res.error){
     const e=document.getElementById('pw-err');if(e)e.style.display='block';return;
   }
   adm=true;
@@ -804,7 +803,11 @@ function rAdm(){
   h+='<div class="adm-sec"><div class="adm-stitle">Chore options</div>';
   d.chores.forEach((ch,i)=>{h+=`<div class="adm-row"><input class="adm-txt" type="text" value="${ch}" oninput="draftCfg.chores[${i}]=this.value"><button class="adm-del" onclick="draftCfg.chores.splice(${i},1);render()">&#215;</button></div>`;});
   h+=`<button class="adm-add" onclick="draftCfg.chores.push('New chore');render()">+ Add chore</button></div>`;
-  h+=`<button class="adm-save" onclick="sc()">&#10003; Save all settings</button></div>`;
+  h+=`<button class="adm-save" onclick="sc()">&#10003; Save all settings</button>`;
+  h+=`<div class="adm-sec" style="margin-top:16px"><div class="adm-stitle">Log tools</div>
+    <div style="font-size:12px;color:var(--txt2);margin-bottom:8px;line-height:1.5">Manually save today's point totals to the permanent log. Use this if the nightly snapshot was missed.</div>
+    <button class="adm-save" style="background:var(--amber)" onclick="runSnapshotNow()">&#128247; Save today to log now</button>
+  </div></div>`;
   return h;
 }
 function ac(){
