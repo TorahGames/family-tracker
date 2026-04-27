@@ -176,7 +176,7 @@ body{display:flex;flex-direction:column;max-width:520px;margin:0 auto;min-height
 </style>
 </head>
 <body>
-<div class="hdr">
+<div class="hdr" id="hdr" style="display:none">
   <div class="hdr-top">
     <div class="hdr-title">&#11088; <span>Family</span> Tracker</div>
     <div><span class="sync-dot" id="sdot"></span><span class="sync-txt" id="stxt">Loading...</span></div>
@@ -184,7 +184,7 @@ body{display:flex;flex-direction:column;max-width:520px;margin:0 auto;min-height
   <div class="hdr-date" id="hdr-date"></div>
   <div class="tabs" id="tabs"></div>
 </div>
-<div class="scroll" id="scroll"></div>
+<div class="scroll" id="scroll" style="display:none"></div>
 <div class="modal-bg" id="modal-bg" style="display:none"></div>
 <div class="toast" id="toast"></div>
 <script>
@@ -193,28 +193,38 @@ const SB_ANON='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJl
 const FN=`${SB_URL}/functions/v1`;
 const H={'apikey':SB_ANON,'Authorization':'Bearer '+SB_ANON,'Content-Type':'application/json'};
 
+// Session token — populated after login. Functions defined at bottom of script.
+let SESSION_TOKEN = sessionStorage.getItem('ft_token') || null;
+
 // ── HELPERS ──────────────────────────────────────────────
 function todayKey(){
   const d=new Date();
   return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 async function callFn(name,body){
-  const r=await fetch(`${FN}/${name}`,{method:'POST',headers:H,body:JSON.stringify(body)});
-  return r.json();
+  // Automatically include session token in every function call
+  const payload = SESSION_TOKEN ? {...body, token: SESSION_TOKEN} : body;
+  const r=await fetch(`${FN}/${name}`,{method:'POST',headers:H,body:JSON.stringify(payload)});
+  const data = await r.json();
+  // If we get a 401, session expired — go back to login
+  if(r.status===401 && name!=='auth'){
+    setSession(null);
+    showLogin();
+    return {error: 'Session expired — please log in again'};
+  }
+  return data;
 }
 let pendingWrites=0;  // blocks poll from overwriting while writes are in flight
 
 async function insertEvent(event_type,child_id,payload){
+  // Goes through Edge Function — server verifies token and adds family_id
+  // Never writes directly to REST (which would require family_id from client)
   pendingWrites++;
   try{
-    const res=await fetch(`${SB_URL}/rest/v1/events`,{
-      method:'POST',
-      headers:{...H,'Prefer':'return=minimal'},
-      body:JSON.stringify({day_key:todayKey(),child_id,event_type,payload})
-    });
-    if(!res.ok){
-      console.error('Event insert failed',event_type,child_id,res.status,await res.text());
-      await loadAll();  // restore true state from DB
+    const res=await callFn('events',{event_type,child_id,payload,day_key:todayKey()});
+    if(res.error){
+      console.error('Event insert failed',event_type,child_id,res.error);
+      await loadAll();
       toast('Sync error — refreshed from server');
       return false;
     }
@@ -224,7 +234,7 @@ async function insertEvent(event_type,child_id,payload){
     toast('Connection error — check your network');
     return false;
   }finally{
-    pendingWrites=Math.max(0,pendingWrites-1);  // single decrement, always runs
+    pendingWrites=Math.max(0,pendingWrites-1);
   }
 }
 
@@ -515,9 +525,9 @@ function rChild(child){
 
 // ── HISTORY LOG ──────────────────────────────────────────
 async function rHistory(){
-  // Load both today's live points (from local state) and past snapshots
-  const r=await fetch(`${SB_URL}/rest/v1/snapshots?select=snapshot_date,child_id,points&order=snapshot_date.desc`,{headers:H});
-  const snapRows=await r.json()||[];
+  // Load snapshots through Edge Function — ensures family scoping
+  const snapRes=await callFn('load',{action:'load_snapshots'});
+  const snapRows=snapRes.snapshots||[];
 
   const todayDate=todayKey();
 
@@ -767,6 +777,7 @@ async function tl(){
     const e=document.getElementById('pw-err');if(e)e.style.display='block';return;
   }
   adm=true;
+  window._adminPw=v;  // keep verified password in memory for save_config
   draftCfg=JSON.parse(JSON.stringify(cfg));  // deep clone — edits go here, not into live cfg
   render();
 }
@@ -776,7 +787,7 @@ function rAdm(){
   // live cfg is never touched until Save is confirmed.
   const d=draftCfg;
   if(!d)return'';
-  let h=`<div class="adm"><div style="display:flex;justify-content:flex-end;margin-bottom:14px"><button class="adm-add" onclick="adm=false;draftCfg=null;render()">&#128274; Lock (discard changes)</button></div>`;
+  let h=`<div class="adm"><div style="display:flex;justify-content:flex-end;margin-bottom:14px"><button class="adm-add" onclick="adm=false;draftCfg=null;window._adminPw=null;render()">&#128274; Lock (discard changes)</button> <button class="adm-add" style="border-color:#fca5a5;color:#dc2626" onclick="doLogout()">Sign out</button></div>`;
   h+='<div class="adm-sec"><div class="adm-stitle">Tasks &amp; points</div>';
   d.tasks.forEach((t,i)=>{h+=`<div class="adm-row"><div class="adm-lbl">${t.name}${t.isChore?'<div class="adm-sub">chore picker</div>':''}</div><input class="adm-num" type="number" min="0" max="10" value="${t.pts}" oninput="draftCfg.tasks[${i}].pts=+this.value"></div>`;});
   h+='</div><div class="adm-sec"><div class="adm-stitle">Prizes (cycle points needed)</div>';
@@ -820,7 +831,7 @@ function ac(){
 }
 async function sc(){
   if(!draftCfg){toast('Nothing to save');return;}
-  const res=await callFn('admin',{action:'save_config',password:'__verified__',config:draftCfg});
+  const res=await callFn('admin',{action:'save_config',password:window._adminPw||'',config:draftCfg});
   if(res.error){toast('Save failed: '+res.error);return;}
   cfg=JSON.parse(JSON.stringify(draftCfg));  // apply draft to live cfg on confirmed save
   draftCfg=null;
@@ -885,15 +896,37 @@ function checkPrizes(id){
   });
 }
 
-async function togglePrize(id,pts,desc,cycleStart,currentlyReceived){
+function togglePrize(id,pts,desc,cycleStart,currentlyReceived){
+  const name=cfg.children.find(c=>c.id===id)?.name||id;
+  const action=currentlyReceived?'Mark as NOT received':'Mark as received';
+  const bg=document.getElementById('modal-bg');bg.style.display='flex';
+  bg.innerHTML=`<div class="modal">
+    <div class="modal-title">${action}</div>
+    <div class="modal-body">${name} &mdash; <b>${desc}</b> (${pts} pts)</div>
+    <div class="err-txt" id="prz-err" style="display:none">Incorrect password</div>
+    <input type="password" class="lock-input" id="prz-pw" placeholder="Admin password"
+      onkeydown="if(event.key==='Enter')doTogglePrize('${id}',${pts},'${cycleStart}',${currentlyReceived})">
+    <div class="modal-btns">
+      <button class="mbtn mbtn-cancel" onclick="cm()">Cancel</button>
+      <button class="mbtn mbtn-grn" onclick="doTogglePrize('${id}',${pts},'${cycleStart}',${currentlyReceived})">${action}</button>
+    </div>
+  </div>`;
+}
+
+async function doTogglePrize(id,pts,cycleStart,currentlyReceived){
+  const pw=document.getElementById('prz-pw')?.value;
   const res=await callFn('admin',{
     action:'toggle_prize_received',
-    password:'__verified__',
+    password:pw,
     child_id:id,pts_threshold:pts,cycle_start:cycleStart,
     received:!currentlyReceived
   });
-  if(res.error){toast('Error: '+res.error);return;}
-  await loadAll();
+  if(res.error){
+    const e=document.getElementById('prz-err');
+    if(e){e.style.display='block';e.textContent=res.error;}
+    return;
+  }
+  cm();await loadAll();
 }
 
 // ── MODALS ───────────────────────────────────────────────
@@ -921,7 +954,105 @@ async function doCycleReset(){
   cm();toast('New cycle started!');await loadAll();
 }
 
-loadAll();
+// ── SESSION ───────────────────────────────────────────────
+function setSession(token){
+  SESSION_TOKEN=token;
+  if(token)sessionStorage.setItem('ft_token',token);
+  else sessionStorage.removeItem('ft_token');
+}
+
+function doLogout(){
+  setSession(null);
+  adm=false;draftCfg=null;window._adminPw=null;tab='overview';
+  cfg={children:[],tasks:[],rewards:[],chores:[],extra:{perInterval:10,payScale:{}},group:{threshold:80,reward:'',tripGoal:600,tripReward:'',cycleStart:null}};
+  showLogin();
+}
+
+function showLogin(){
+  const hdr=document.getElementById('hdr');
+  const scroll=document.getElementById('scroll');
+  if(hdr)hdr.style.display='none';
+  if(scroll)scroll.style.display='none';
+  document.getElementById('modal-bg').style.display='none';
+  let loginDiv=document.getElementById('login-screen');
+  if(!loginDiv){
+    loginDiv=document.createElement('div');
+    loginDiv.id='login-screen';
+    document.body.appendChild(loginDiv);
+  }
+  loginDiv.style.display='flex';
+  loginDiv.style.minHeight='100vh';
+  loginDiv.style.alignItems='center';
+  loginDiv.style.justifyContent='center';
+  loginDiv.style.padding='24px';
+  loginDiv.style.background='var(--bg)';
+  loginDiv.innerHTML=`
+    <div style="background:var(--surf);border-radius:var(--r);padding:32px 24px;width:100%;max-width:360px;box-shadow:0 4px 24px rgba(0,0,0,.1)">
+      <div style="text-align:center;margin-bottom:28px">
+        <div style="font-size:40px;margin-bottom:8px">⭐</div>
+        <div style="font-size:22px;font-weight:900;color:var(--txt)"><span style="color:var(--green)">Family</span> Tracker</div>
+        <div style="font-size:13px;color:var(--txt3);margin-top:4px">Sign in to your family account</div>
+      </div>
+      <div class="err-txt" id="login-err" style="display:none;margin-bottom:12px">Incorrect email or password</div>
+      <input type="email" id="login-email" placeholder="Email address" autocomplete="email"
+        style="width:100%;padding:12px 14px;border-radius:9px;border:1px solid var(--bdr2);background:var(--surf2);font-size:15px;font-family:'Nunito',sans-serif;color:var(--txt);margin-bottom:10px"
+        onkeydown="if(event.key==='Enter')document.getElementById('login-pw').focus()">
+      <input type="password" id="login-pw" placeholder="Password" autocomplete="current-password"
+        style="width:100%;padding:12px 14px;border-radius:9px;border:1px solid var(--bdr2);background:var(--surf2);font-size:15px;font-family:'Nunito',sans-serif;color:var(--txt);margin-bottom:16px"
+        onkeydown="if(event.key==='Enter')doLogin()">
+      <button id="login-btn" onclick="doLogin()"
+        style="width:100%;padding:13px;background:var(--green);color:#fff;border:none;border-radius:9px;font-family:'Nunito',sans-serif;font-size:16px;font-weight:800;cursor:pointer">
+        Sign in
+      </button>
+    </div>`;
+}
+
+async function doLogin(){
+  const email=document.getElementById('login-email')?.value?.trim();
+  const pw=document.getElementById('login-pw')?.value;
+  const btn=document.getElementById('login-btn');
+  const err=document.getElementById('login-err');
+  if(err)err.style.display='none';
+  if(btn){btn.textContent='Signing in...';btn.disabled=true;}
+  const res=await fetch(`${FN}/auth`,{
+    method:'POST',headers:H,
+    body:JSON.stringify({action:'login',email,password:pw})
+  }).then(r=>r.json()).catch(()=>({error:'Connection error — check your network'}));
+  if(res.error){
+    if(err){err.style.display='block';err.textContent=res.error;}
+    if(btn){btn.textContent='Sign in';btn.disabled=false;}
+    return;
+  }
+  setSession(res.token);
+  document.getElementById('login-screen').style.display='none';
+  const hdr=document.getElementById('hdr');
+  const scroll=document.getElementById('scroll');
+  if(hdr)hdr.style.display='';
+  if(scroll)scroll.style.display='';
+  loadAll();
+}
+
+// ── START ─────────────────────────────────────────────────
+// If we have a saved session token, verify it. Otherwise show login.
+if(SESSION_TOKEN){
+  fetch(`${FN}/auth`,{
+    method:'POST',headers:H,
+    body:JSON.stringify({action:'verify_token',token:SESSION_TOKEN})
+  }).then(r=>r.json()).then(res=>{
+    if(res.valid){
+      const hdr=document.getElementById('hdr');
+      const scroll=document.getElementById('scroll');
+      if(hdr)hdr.style.display='';
+      if(scroll)scroll.style.display='';
+      loadAll();
+    } else {
+      setSession(null);
+      showLogin();
+    }
+  }).catch(()=>showLogin());
+} else {
+  showLogin();
+}
 </script>
 </body>
 </html>
