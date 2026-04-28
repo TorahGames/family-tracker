@@ -988,23 +988,111 @@ function showLogin(){
   loginDiv.style.background='var(--bg)';
   loginDiv.innerHTML=`
     <div style="background:var(--surf);border-radius:var(--r);padding:32px 24px;width:100%;max-width:360px;box-shadow:0 4px 24px rgba(0,0,0,.1)">
-      <div style="text-align:center;margin-bottom:28px">
+      <div style="text-align:center;margin-bottom:24px">
         <div style="font-size:40px;margin-bottom:8px">⭐</div>
         <div style="font-size:22px;font-weight:900;color:var(--txt)"><span style="color:var(--green)">Family</span> Tracker</div>
-        <div style="font-size:13px;color:var(--txt3);margin-top:4px">Sign in to your family account</div>
       </div>
-      <div class="err-txt" id="login-err" style="display:none;margin-bottom:12px">Incorrect email or password</div>
-      <input type="email" id="login-email" placeholder="Email address" autocomplete="email"
-        style="width:100%;padding:12px 14px;border-radius:9px;border:1px solid var(--bdr2);background:var(--surf2);font-size:15px;font-family:'Nunito',sans-serif;color:var(--txt);margin-bottom:10px"
-        onkeydown="if(event.key==='Enter')document.getElementById('login-pw').focus()">
-      <input type="password" id="login-pw" placeholder="Password" autocomplete="current-password"
-        style="width:100%;padding:12px 14px;border-radius:9px;border:1px solid var(--bdr2);background:var(--surf2);font-size:15px;font-family:'Nunito',sans-serif;color:var(--txt);margin-bottom:16px"
-        onkeydown="if(event.key==='Enter')doLogin()">
-      <button id="login-btn" onclick="doLogin()"
-        style="width:100%;padding:13px;background:var(--green);color:#fff;border:none;border-radius:9px;font-family:'Nunito',sans-serif;font-size:16px;font-weight:800;cursor:pointer">
-        Sign in
-      </button>
+      <!-- Tab switcher -->
+      <div style="display:flex;border-radius:9px;overflow:hidden;border:1px solid var(--bdr2);margin-bottom:20px">
+        <button id="tab-signin" onclick="switchAuthTab('signin')"
+          style="flex:1;padding:10px;border:none;background:var(--green);color:#fff;font-family:'Nunito',sans-serif;font-size:14px;font-weight:800;cursor:pointer">Sign in</button>
+        <button id="tab-register" onclick="switchAuthTab('register')"
+          style="flex:1;padding:10px;border:none;background:var(--surf2);color:var(--txt2);font-family:'Nunito',sans-serif;font-size:14px;font-weight:700;cursor:pointer">Create account</button>
+      </div>
+      <div class="err-txt" id="login-err" style="display:none;margin-bottom:12px"></div>
+      <div class="err-txt" id="login-ok" style="display:none;margin-bottom:12px;color:var(--green-d);background:var(--green-l);border-radius:7px;padding:8px 12px"></div>
+
+      <!-- Sign in form -->
+      <div id="form-signin">
+        <input type="email" id="login-email" placeholder="Email address" autocomplete="email"
+          style="width:100%;padding:12px 14px;border-radius:9px;border:1px solid var(--bdr2);background:var(--surf2);font-size:15px;font-family:'Nunito',sans-serif;color:var(--txt);margin-bottom:10px"
+          onkeydown="if(event.key==='Enter')document.getElementById('login-pw').focus()">
+        <input type="password" id="login-pw" placeholder="Password" autocomplete="current-password"
+          style="width:100%;padding:12px 14px;border-radius:9px;border:1px solid var(--bdr2);background:var(--surf2);font-size:15px;font-family:'Nunito',sans-serif;color:var(--txt);margin-bottom:16px"
+          onkeydown="if(event.key==='Enter')doLogin()">
+        <button id="login-btn" onclick="doLogin()"
+          style="width:100%;padding:13px;background:var(--green);color:#fff;border:none;border-radius:9px;font-family:'Nunito',sans-serif;font-size:16px;font-weight:800;cursor:pointer">
+          Sign in
+        </button>
+      </div>
+
+      <!-- Register form -->
+      <div id="form-register" style="display:none">
+        <input type="email" id="reg-email" placeholder="Email address" autocomplete="email"
+          style="width:100%;padding:12px 14px;border-radius:9px;border:1px solid var(--bdr2);background:var(--surf2);font-size:15px;font-family:'Nunito',sans-serif;color:var(--txt);margin-bottom:10px">
+        <input type="password" id="reg-pw" placeholder="Login password (min 6 chars)"
+          style="width:100%;padding:12px 14px;border-radius:9px;border:1px solid var(--bdr2);background:var(--surf2);font-size:15px;font-family:'Nunito',sans-serif;color:var(--txt);margin-bottom:10px">
+        <input type="password" id="reg-pw2" placeholder="Confirm login password"
+          style="width:100%;padding:12px 14px;border-radius:9px;border:1px solid var(--bdr2);background:var(--surf2);font-size:15px;font-family:'Nunito',sans-serif;color:var(--txt);margin-bottom:10px">
+        <input type="password" id="reg-adm" placeholder="Admin password (for parent controls)"
+          style="width:100%;padding:12px 14px;border-radius:9px;border:1px solid var(--bdr2);background:var(--surf2);font-size:15px;font-family:'Nunito',sans-serif;color:var(--txt);margin-bottom:16px"
+          onkeydown="if(event.key==='Enter')doRegister()">
+        <button id="reg-btn" onclick="doRegister()"
+          style="width:100%;padding:13px;background:var(--green);color:#fff;border:none;border-radius:9px;font-family:'Nunito',sans-serif;font-size:16px;font-weight:800;cursor:pointer">
+          Create account
+        </button>
+      </div>
     </div>`;
+}
+
+function switchAuthTab(tab){
+  const signin=document.getElementById('form-signin');
+  const register=document.getElementById('form-register');
+  const tabSignin=document.getElementById('tab-signin');
+  const tabRegister=document.getElementById('tab-register');
+  const err=document.getElementById('login-err');
+  const ok=document.getElementById('login-ok');
+  if(err)err.style.display='none';
+  if(ok)ok.style.display='none';
+  if(tab==='signin'){
+    if(signin)signin.style.display='';
+    if(register)register.style.display='none';
+    if(tabSignin){tabSignin.style.background='var(--green)';tabSignin.style.color='#fff';}
+    if(tabRegister){tabRegister.style.background='var(--surf2)';tabRegister.style.color='var(--txt2)';}
+  } else {
+    if(signin)signin.style.display='none';
+    if(register)register.style.display='';
+    if(tabSignin){tabSignin.style.background='var(--surf2)';tabSignin.style.color='var(--txt2)';}
+    if(tabRegister){tabRegister.style.background='var(--green)';tabRegister.style.color='#fff';}
+  }
+}
+
+async function doRegister(){
+  const email=document.getElementById('reg-email')?.value?.trim();
+  const pw=document.getElementById('reg-pw')?.value;
+  const pw2=document.getElementById('reg-pw2')?.value;
+  const adm=document.getElementById('reg-adm')?.value;
+  const err=document.getElementById('login-err');
+  const okMsg=document.getElementById('login-ok');
+  if(err)err.style.display='none';
+  if(okMsg)okMsg.style.display='none';
+  if(!email||!pw||!pw2||!adm){
+    if(err){err.style.display='block';err.textContent='All fields are required';}return;
+  }
+  if(pw!==pw2){
+    if(err){err.style.display='block';err.textContent='Passwords do not match';}return;
+  }
+  if(pw.length<6){
+    if(err){err.style.display='block';err.textContent='Password must be at least 6 characters';}return;
+  }
+  const btn=document.getElementById('reg-btn');
+  if(btn){btn.textContent='Creating account...';btn.disabled=true;}
+  const res=await fetch(`${FN}/auth`,{
+    method:'POST',headers:H,
+    body:JSON.stringify({action:'register',email,password:pw,admin_password:adm})
+  }).then(r=>r.json()).catch(()=>({error:'Connection error'}));
+  if(res.error){
+    if(err){err.style.display='block';err.textContent=res.error;}
+    if(btn){btn.textContent='Create account';btn.disabled=false;}
+    return;
+  }
+  setSession(res.token);
+  document.getElementById('login-screen').style.display='none';
+  const hdr=document.getElementById('hdr');
+  const scroll=document.getElementById('scroll');
+  if(hdr)hdr.style.display='';
+  if(scroll)scroll.style.display='';
+  loadAll();
 }
 
 async function doLogin(){
