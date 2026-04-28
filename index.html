@@ -195,6 +195,7 @@ const H={'apikey':SB_ANON,'Authorization':'Bearer '+SB_ANON,'Content-Type':'appl
 
 // Session token — populated after login. Functions defined at bottom of script.
 let SESSION_TOKEN = sessionStorage.getItem('ft_token') || null;
+let isLoggedIn = false;  // prevents poll and render from touching login screen
 
 // ── HELPERS ──────────────────────────────────────────────
 function todayKey(){
@@ -329,7 +330,7 @@ async function loadAll(){
 // Poll every 15s for changes from other devices.
 // Skips if any writes are still in flight to prevent erasing optimistic updates.
 setInterval(async()=>{
-  if(document.hidden||tab==='admin')return;
+  if(!isLoggedIn||document.hidden||tab==='admin')return;
   if(pendingWrites>0)return;  // don't overwrite while user actions are still saving
   try{
     const data=await callFn('load',{day_key:todayKey()});
@@ -356,6 +357,7 @@ function ck(){return'<svg class="ck-svg" viewBox="0 0 12 9"><polyline points="1,
 
 // ── RENDER ───────────────────────────────────────────────
 function render(){
+  if(!isLoggedIn)return;  // never render app while login screen is showing
   const tabs=document.getElementById('tabs'),scroll=document.getElementById('scroll');
   if(!tabs||!scroll)return;
   let th=`<div class="tab ${tab==='overview'?'on':''}" onclick="st('overview')">Overview</div>`;
@@ -963,6 +965,7 @@ function setSession(token){
 
 function doLogout(){
   setSession(null);
+  isLoggedIn=false;
   adm=false;draftCfg=null;window._adminPw=null;tab='overview';
   cfg={children:[],tasks:[],rewards:[],chores:[],extra:{perInterval:10,payScale:{}},group:{threshold:80,reward:'',tripGoal:600,tripReward:'',cycleStart:null}};
   showLogin();
@@ -1087,6 +1090,7 @@ async function doRegister(){
     return;
   }
   setSession(res.token);
+  isLoggedIn=true;
   document.getElementById('login-screen').style.display='none';
   const hdr=document.getElementById('hdr');
   const scroll=document.getElementById('scroll');
@@ -1128,6 +1132,7 @@ if(SESSION_TOKEN){
     body:JSON.stringify({action:'verify_token',token:SESSION_TOKEN})
   }).then(r=>r.json()).then(res=>{
     if(res.valid){
+      isLoggedIn=true;
       const hdr=document.getElementById('hdr');
       const scroll=document.getElementById('scroll');
       if(hdr)hdr.style.display='';
@@ -1135,6 +1140,7 @@ if(SESSION_TOKEN){
       loadAll();
     } else {
       setSession(null);
+      isLoggedIn=false;
       showLogin();
     }
   }).catch(()=>showLogin());
