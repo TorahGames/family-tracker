@@ -791,7 +791,19 @@ function rAdm(){
   if(!d)return'';
   let h=`<div class="adm"><div style="display:flex;justify-content:flex-end;margin-bottom:14px"><button class="adm-add" onclick="adm=false;draftCfg=null;window._adminPw=null;render()">&#128274; Lock (discard changes)</button> <button class="adm-add" style="border-color:#fca5a5;color:#dc2626" onclick="doLogout()">Sign out</button></div>`;
   h+='<div class="adm-sec"><div class="adm-stitle">Tasks &amp; points</div>';
-  d.tasks.forEach((t,i)=>{h+=`<div class="adm-row"><div class="adm-lbl">${t.name}${t.isChore?'<div class="adm-sub">chore picker</div>':''}</div><input class="adm-num" type="number" min="0" max="10" value="${t.pts}" oninput="draftCfg.tasks[${i}].pts=+this.value"></div>`;});
+  d.tasks.forEach((t,i)=>{
+    if(t.isChore){
+      // Chore task — only edit points, name is fixed
+      h+=`<div class="adm-row"><div class="adm-lbl">${t.name}<div class="adm-sub">chore picker</div></div><input class="adm-num" type="number" min="0" max="10" value="${t.pts}" oninput="draftCfg.tasks[${i}].pts=+this.value"></div>`;
+    } else {
+      h+=`<div class="adm-row">
+        <input class="adm-txt" type="text" value="${t.name}" placeholder="Task name" oninput="draftCfg.tasks[${i}].name=this.value" style="flex:2">
+        <input class="adm-num" type="number" min="0" max="10" value="${t.pts}" oninput="draftCfg.tasks[${i}].pts=+this.value">
+        <button class="adm-del" onclick="draftCfg.tasks.splice(${i},1);render()">&#215;</button>
+      </div>`;
+    }
+  });
+  h+=`<button class="adm-add" onclick="draftCfg.tasks.splice(draftCfg.tasks.findIndex(t=>t.id==='inVan'),0,{id:'task'+Date.now(),name:'New task',pts:1});render()">+ Add task</button>`;
   h+='</div><div class="adm-sec"><div class="adm-stitle">Prizes (cycle points needed)</div>';
   d.rewards.forEach((r,i)=>{h+=`<div class="adm-row"><input class="adm-num" type="number" min="0" value="${r.pts}" oninput="draftCfg.rewards[${i}].pts=+this.value" style="width:56px;flex-shrink:0"><input class="adm-txt" type="text" value="${r.desc}" oninput="draftCfg.rewards[${i}].desc=this.value"><button class="adm-del" onclick="draftCfg.rewards.splice(${i},1);render()">&#215;</button></div>`;});
   h+=`<button class="adm-add" onclick="draftCfg.rewards.push({pts:0,desc:'New prize'});render()">+ Add prize</button></div>`;
@@ -1096,7 +1108,7 @@ async function doRegister(){
   const scroll=document.getElementById('scroll');
   if(hdr)hdr.style.display='';
   if(scroll)scroll.style.display='';
-  loadAll();
+  requestAnimationFrame(()=>loadAll());
 }
 
 async function doLogin(){
@@ -1116,12 +1128,13 @@ async function doLogin(){
     return;
   }
   setSession(res.token);
+  isLoggedIn=true;
   document.getElementById('login-screen').style.display='none';
   const hdr=document.getElementById('hdr');
   const scroll=document.getElementById('scroll');
   if(hdr)hdr.style.display='';
   if(scroll)scroll.style.display='';
-  loadAll();
+  requestAnimationFrame(()=>loadAll());
 }
 
 // ── START ─────────────────────────────────────────────────
@@ -1137,7 +1150,7 @@ if(SESSION_TOKEN){
       const scroll=document.getElementById('scroll');
       if(hdr)hdr.style.display='';
       if(scroll)scroll.style.display='';
-      loadAll();
+      requestAnimationFrame(()=>loadAll());
     } else {
       setSession(null);
       isLoggedIn=false;
