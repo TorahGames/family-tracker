@@ -344,7 +344,8 @@ setInterval(async()=>{
     payouts=data.payouts||[];
     deriveState(todayEvents);
     ss('ok');
-    render();
+    // Don't re-render history tab on poll — it resets scroll and collapses open days
+    if(tab!=='history') render();
   }catch(e){ss('err');}
 },15000);
 
@@ -489,6 +490,17 @@ function rChild(child){
       <button class="xbtn" onclick="ce('${id}',${cfg.extra?.perInterval||10})">+</button>
       <span class="xinfo">${ei>0?`<b>$${ep.toFixed(2)}</b> ready to log`:'add time to earn pay'}</span>
     </div>
+    <div style="margin-top:10px">
+      <button onclick="startTimer('${id}')" id="timer-btn-${id}"
+        style="width:100%;padding:9px;border-radius:8px;border:1px solid var(--bdr2);background:var(--surf2);font-family:'Nunito',sans-serif;font-size:13px;font-weight:700;color:var(--txt2);cursor:pointer">
+        &#9200; Start 20-min timer
+      </button>
+      <div id="timer-display-${id}" style="display:none;margin-top:8px;text-align:center">
+        <div id="timer-count-${id}" style="font-size:32px;font-weight:900;color:var(--green-dd);font-family:'Nunito',sans-serif">20:00</div>
+        <div style="font-size:12px;color:var(--txt3);margin-bottom:6px">keep working!</div>
+        <button onclick="stopTimer('${id}')" style="padding:6px 16px;border-radius:8px;border:1px solid var(--bdr2);background:var(--surf2);font-family:'Nunito',sans-serif;font-size:12px;font-weight:700;color:var(--txt2);cursor:pointer">Cancel</button>
+      </div>
+    </div>
     ${ei>0?`<button class="log-btn" onclick="promptLogPay('${id}')">&#128274; Log $${ep.toFixed(2)} to ${child.name}&rsquo;s balance</button>`:''}
   </div>`;
 
@@ -561,9 +573,20 @@ async function rHistory(){
     <div class="log-day-body" id="ld-today">`;
   cfg.children.forEach(c=>{
     const p=getPts(c.id);
-    h+=`<div class="log-kid-row">
+    const doneTasks=cfg.tasks.filter(t=>{
+      if(t.isChore)return!!localChore[c.id];
+      return!!(localTasks[c.id]?.[t.id]);
+    });
+    const taskNames=doneTasks.map(t=>{
+      if(t.isChore)return localChore[c.id];
+      if(t.id==='inBed')return'In bed on time';
+      if(t.id==='shower')return'Shower';
+      return t.name;
+    });
+    h+=`<div class="log-kid-row" style="flex-wrap:wrap;align-items:flex-start">
       <div class="log-kid-name">${c.name}</div>
       <div class="log-kid-pts">${p} pts</div>
+      ${taskNames.length?`<div style="width:100%;padding:3px 0 4px;font-size:11px;color:var(--green-d);line-height:1.6">${taskNames.join(' &middot; ')}</div>`:''}
     </div>`;
   });
   h+=`</div></div>`;
@@ -588,10 +611,14 @@ async function rHistory(){
     cfg.children.forEach(c=>{
       const row=dayRows.find(r=>r.child_id===c.id);
       const p=row?.points??0;
+      const mx2=cfg.tasks.reduce((a,t)=>a+t.pts,0);
+      const pct=mx2>0?Math.min(100,Math.round(p/mx2*100)):0;
+      const pass=pct>=cfg.group.threshold,warn=pct>=50&&!pass;
+      const icon=pass?'✅':warn?'⚠️':'❌';
       h+=`<div class="log-kid-row">
         <div class="log-kid-name">${c.name}</div>
+        <div style="flex:1;font-size:11px;color:var(--txt3);padding-left:6px">${icon} ${pct}%</div>
         <div class="log-kid-pts">${p} pts</div>
-        <div style="flex:1"></div>
         ${adm?`<button class="log-kid-edit" onclick="openEditPts('${date}','${c.id}','${c.name}',${p})">Edit</button>`:''}
       </div>`;
     });
@@ -966,6 +993,48 @@ async function doCycleReset(){
   const res=await callFn('admin',{action:'cycle_reset',password:pw,day_key:todayKey()});
   if(res.error){const e=document.getElementById('cyc-err');if(e){e.style.display='block';e.textContent=res.error;}return;}
   cm();toast('New cycle started!');await loadAll();
+}
+
+// ── TIMER ─────────────────────────────────────────────────
+const activeTimers = {};  // {child_id: {interval, remaining}}
+
+function startTimer(id){
+  if(activeTimers[id])return;  // already running
+  const btn=document.getElementById('timer-btn-'+id);
+  const display=document.getElementById('timer-display-'+id);
+  const count=document.getElementById('timer-count-'+id);
+  if(btn)btn.style.display='none';
+  if(display)display.style.display='block';
+  let remaining=20*60;
+  function tick(){
+    remaining--;
+    const m=Math.floor(remaining/60),s=remaining%60;
+    if(count)count.textContent=`${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+    if(remaining<=0){
+      clearInterval(activeTimers[id].interval);
+      delete activeTimers[id];
+      // Timer done — always add 20 minutes (the timer is fixed at 20 min)
+      ce(id, 20);
+      if(display)display.style.display='none';
+      if(btn){btn.style.display='';btn.textContent='⏱ Start another 20-min timer';}
+      // Vibrate on mobile if supported
+      if(navigator.vibrate)navigator.vibrate([300,100,300]);
+      toast(`⏰ ${cfg.children.find(c=>c.id===id)?.name||id}'s 20 minutes are up!`);
+    }
+  }
+  tick();
+  activeTimers[id]={interval:setInterval(tick,1000),remaining};
+}
+
+function stopTimer(id){
+  if(activeTimers[id]){
+    clearInterval(activeTimers[id].interval);
+    delete activeTimers[id];
+  }
+  const btn=document.getElementById('timer-btn-'+id);
+  const display=document.getElementById('timer-display-'+id);
+  if(display)display.style.display='none';
+  if(btn){btn.style.display='';btn.textContent='⏱ Start 20-min timer';}
 }
 
 // ── SESSION ───────────────────────────────────────────────
