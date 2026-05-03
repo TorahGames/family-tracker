@@ -490,16 +490,8 @@ function rChild(child){
       <button class="xbtn" onclick="ce('${id}',${cfg.extra?.perInterval||10})">+</button>
       <span class="xinfo">${ei>0?`<b>$${ep.toFixed(2)}</b> ready to log`:'add time to earn pay'}</span>
     </div>
-    <div style="margin-top:10px">
-      <button onclick="startTimer('${id}')" id="timer-btn-${id}"
-        style="width:100%;padding:9px;border-radius:8px;border:1px solid var(--bdr2);background:var(--surf2);font-family:'Nunito',sans-serif;font-size:13px;font-weight:700;color:var(--txt2);cursor:pointer">
-        &#9200; Start 20-min timer
-      </button>
-      <div id="timer-display-${id}" style="display:none;margin-top:8px;text-align:center">
-        <div id="timer-count-${id}" style="font-size:32px;font-weight:900;color:var(--green-dd);font-family:'Nunito',sans-serif">20:00</div>
-        <div style="font-size:12px;color:var(--txt3);margin-bottom:6px">keep working!</div>
-        <button onclick="stopTimer('${id}')" style="padding:6px 16px;border-radius:8px;border:1px solid var(--bdr2);background:var(--surf2);font-family:'Nunito',sans-serif;font-size:12px;font-weight:700;color:var(--txt2);cursor:pointer">Cancel</button>
-      </div>
+    <div style="margin-top:10px" id="timer-wrap-${id}">
+      ${renderTimerUI(id)}
     </div>
     ${ei>0?`<button class="log-btn" onclick="promptLogPay('${id}')">&#128274; Log $${ep.toFixed(2)} to ${child.name}&rsquo;s balance</button>`:''}
   </div>`;
@@ -996,45 +988,97 @@ async function doCycleReset(){
 }
 
 // ── TIMER ─────────────────────────────────────────────────
-const activeTimers = {};  // {child_id: {interval, remaining}}
+// Timer state lives outside the DOM so tab switches never break it.
+// State: {remaining (secs), paused (bool), interval (id), startedAt (ms)}
+const activeTimers = {};
 
-function startTimer(id){
-  if(activeTimers[id])return;  // already running
-  const btn=document.getElementById('timer-btn-'+id);
-  const display=document.getElementById('timer-display-'+id);
-  const count=document.getElementById('timer-count-'+id);
-  if(btn)btn.style.display='none';
-  if(display)display.style.display='block';
-  let remaining=20*60;
-  function tick(){
-    remaining--;
-    const m=Math.floor(remaining/60),s=remaining%60;
-    if(count)count.textContent=`${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
-    if(remaining<=0){
-      clearInterval(activeTimers[id].interval);
-      delete activeTimers[id];
-      // Timer done — always add 20 minutes (the timer is fixed at 20 min)
-      ce(id, 20);
-      if(display)display.style.display='none';
-      if(btn){btn.style.display='';btn.textContent='⏱ Start another 20-min timer';}
-      // Vibrate on mobile if supported
-      if(navigator.vibrate)navigator.vibrate([300,100,300]);
-      toast(`⏰ ${cfg.children.find(c=>c.id===id)?.name||id}'s 20 minutes are up!`);
-    }
-  }
-  tick();
-  activeTimers[id]={interval:setInterval(tick,1000),remaining};
+function timerFmt(secs){
+  const m=Math.floor(secs/60),s=secs%60;
+  return`${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
 }
 
-function stopTimer(id){
-  if(activeTimers[id]){
-    clearInterval(activeTimers[id].interval);
-    delete activeTimers[id];
+function renderTimerUI(id){
+  const t=activeTimers[id];
+  if(!t){
+    // No timer running or paused — show start button
+    return`<button onclick="startTimer('${id}')"
+      style="width:100%;padding:9px;border-radius:8px;border:1px solid var(--bdr2);background:var(--surf2);font-family:'Nunito',sans-serif;font-size:13px;font-weight:700;color:var(--txt2);cursor:pointer">
+      &#9200; Start 20-min timer
+    </button>`;
   }
-  const btn=document.getElementById('timer-btn-'+id);
-  const display=document.getElementById('timer-display-'+id);
-  if(display)display.style.display='none';
-  if(btn){btn.style.display='';btn.textContent='⏱ Start 20-min timer';}
+  // Timer running or paused
+  // Use remaining from state (updated by tick or stored at pause)
+  const secs=t.paused ? (t.pausedRemaining??20*60) : Math.max(0,Math.ceil((t.endTime-Date.now())/1000));
+  const pct=Math.round((1-secs/1200)*100);
+  return`<div style="text-align:center;background:${t.paused?'var(--amber-l)':'var(--green-l)'};border-radius:10px;padding:14px">
+    <div style="font-size:36px;font-weight:900;color:${t.paused?'var(--amber-d)':'var(--green-dd)'};font-family:'Nunito',sans-serif;line-height:1">${timerFmt(secs)}</div>
+    <div style="font-size:11px;color:var(--txt3);margin:4px 0 10px">${t.paused?'paused':'keep working!'} &mdash; ${pct}% done</div>
+    <div style="display:flex;gap:8px;justify-content:center">
+      <button onclick="${t.paused?`resumeTimer('${id}')`:`pauseTimer('${id}')`}"
+        style="padding:7px 18px;border-radius:8px;border:none;background:${t.paused?'var(--green)':'var(--amber)'};color:#fff;font-family:'Nunito',sans-serif;font-size:13px;font-weight:800;cursor:pointer">
+        ${t.paused?'&#9654; Resume':'&#9646;&#9646; Pause'}
+      </button>
+      <button onclick="cancelTimer('${id}')"
+        style="padding:7px 14px;border-radius:8px;border:1px solid var(--bdr2);background:var(--surf2);font-family:'Nunito',sans-serif;font-size:13px;font-weight:700;color:var(--txt2);cursor:pointer">
+        Cancel
+      </button>
+    </div>
+  </div>`;
+}
+
+function refreshTimerUI(id){
+  // Re-render just the timer widget without a full render()
+  const wrap=document.getElementById('timer-wrap-'+id);
+  if(wrap) wrap.innerHTML=renderTimerUI(id);
+}
+
+function startTimer(id){
+  if(activeTimers[id]) return;
+  const endTime=Date.now()+(20*60*1000);
+  activeTimers[id]={endTime, pausedRemaining:null, paused:false, interval:null};
+  activeTimers[id].interval=setInterval(()=>timerTick(id),500);  // poll twice/sec for accuracy
+  refreshTimerUI(id);
+}
+
+function pauseTimer(id){
+  const t=activeTimers[id];
+  if(!t||t.paused) return;
+  clearInterval(t.interval);
+  t.pausedRemaining=Math.max(0,Math.ceil((t.endTime-Date.now())/1000));
+  t.paused=true;
+  refreshTimerUI(id);
+}
+
+function resumeTimer(id){
+  const t=activeTimers[id];
+  if(!t||!t.paused) return;
+  // Restore endTime from remaining secs saved at pause
+  t.endTime=Date.now()+(t.pausedRemaining*1000);
+  t.paused=false;
+  t.interval=setInterval(()=>timerTick(id),500);
+  refreshTimerUI(id);
+}
+
+function cancelTimer(id){
+  const t=activeTimers[id];
+  if(t){clearInterval(t.interval);delete activeTimers[id];}
+  refreshTimerUI(id);
+}
+
+function timerTick(id){
+  const t=activeTimers[id];
+  if(!t||t.paused) return;
+  // Use clock time so phone sleep/background never causes lag
+  const remaining=Math.max(0,Math.ceil((t.endTime-Date.now())/1000));
+  t.remaining=remaining;
+  if(remaining<=0){
+    clearInterval(t.interval);
+    delete activeTimers[id];
+    ce(id, 20);  // always add exactly 20 minutes
+    if(navigator.vibrate) navigator.vibrate([300,100,300]);
+    toast(`⏰ ${cfg.children.find(c=>c.id===id)?.name||id}'s 20 minutes are up!`);
+  }
+  refreshTimerUI(id);
 }
 
 // ── SESSION ───────────────────────────────────────────────
