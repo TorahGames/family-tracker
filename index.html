@@ -196,6 +196,7 @@ const H={'apikey':SB_ANON,'Authorization':'Bearer '+SB_ANON,'Content-Type':'appl
 // Session token — populated after login. Functions defined at bottom of script.
 let SESSION_TOKEN = sessionStorage.getItem('ft_token') || null;
 let isLoggedIn = false;  // prevents poll and render from touching login screen
+let streaks = [];  // [{child_id, current_streak, best_streak, perfect_days}]
 
 // ── HELPERS ──────────────────────────────────────────────
 function todayKey(){
@@ -295,6 +296,16 @@ function getPts(id){
 function mx(){return cfg.tasks.reduce((a,t)=>a+t.pts,0);}
 function getCycle(id){return cyclePoints[id]||0;}
 function getPayoutRow(id){return payouts.find(p=>p.child_id===id)||{total_owed:0,total_paid:0,outstanding:0};}
+function getStreak(id){return streaks.find(s=>s.child_id===id)||{current_streak:0,best_streak:0,perfect_days:0};}
+
+// Nudge messages based on progress
+function nudgeMsg(pct, tasksLeft){
+  if(pct>=100) return "⭐ Perfect day! You crushed it!";
+  if(pct>=80)  return `Almost there — just ${tasksLeft} task${tasksLeft>1?'s':''} left!`;
+  if(pct>=50)  return "You're more than halfway — keep going! 💪";
+  if(pct>=25)  return "Good start — keep the momentum!";
+  return "Every task counts — let's go! 🚀";
+}
 function extraIntervals(id){return Math.floor((localExtra[id]||0)/(cfg.extra?.perInterval||10));}
 function extraPay(id){return+(extraIntervals(id)*(cfg.extra?.payScale?.[id]??0)).toFixed(2);}
 
@@ -318,6 +329,7 @@ async function loadAll(){
     (data.cyclePoints||[]).forEach(r=>{cyclePoints[r.child_id]=r.cycle_total;});
     prizes=data.prizes||[];
     payouts=data.payouts||[];
+    streaks=data.streaks||[];
     deriveState(todayEvents);
     ss('ok');
   }catch(e){
@@ -342,6 +354,7 @@ setInterval(async()=>{
     (data.cyclePoints||[]).forEach(r=>{cyclePoints[r.child_id]=r.cycle_total;});
     prizes=data.prizes||[];
     payouts=data.payouts||[];
+    streaks=data.streaks||[];
     deriveState(todayEvents);
     ss('ok');
     // Don't re-render history tab on poll — it resets scroll and collapses open days
@@ -396,6 +409,7 @@ function rOv(){
     const pts=getPts(c.id),pct=gPct(c.id,m),pass=pct>=cfg.group.threshold,warn=pct>=50&&!pass;
     const cls=pass?'pass':warn?'warn':'fail',icon=pass?'✅':warn?'⚠️':'❌';
     const wp=getCycle(c.id),wPct=Math.min(100,Math.round(wp/indvTrip*100));
+    const str=getStreak(c.id);
     h+=`<div class="kid-card ${cls}" onclick="${adm?'':'st(\'' + c.id + '\')'}" style="${adm?'cursor:default':''}">
       <div class="kid-top"><div class="kid-name">${c.name}</div><div style="font-size:16px">${icon}</div></div>
       <div class="kid-score">${pts}<span style="font-size:13px;font-weight:700"> / ${m}</span></div>
@@ -425,13 +439,22 @@ function rOv(){
   </div>`;
 
   const sorted=[...cfg.children].sort((a,b)=>getCycle(b.id)-getCycle(a.id));
+  const medals=['🥇','🥈','🥉'];
   h+='<div class="week-strip"><div class="week-title">Cycle totals</div>';
-  sorted.forEach(c=>{
+  sorted.forEach((c,i)=>{
     const wp=getCycle(c.id),indvTrip2=cfg.rewards[cfg.rewards.length-1]?.pts||100;
     const wpc=Math.min(100,Math.round(wp/indvTrip2*100));
     const tr=[...cfg.rewards].filter(r=>wp>=r.pts).sort((a,b)=>b.pts-a.pts)[0];
     const wc=wp>=indvTrip2?'wb-pass':wp>=(cfg.rewards[0]?.pts||25)?'wb-warn':'wb-fail';
-    h+=`<div class="week-row"><div class="week-name">${c.name}</div><div class="week-bar-wrap"><div class="week-bar-fill" style="width:${wpc}%"></div></div><div class="week-pts">${wp}pts</div><div class="week-badge ${wc}">${tr?tr.desc.slice(0,16):'none yet'}</div></div>`;
+    const medal=medals[i]||'';
+    const str2=getStreak(c.id);
+    const streakBadge=str2.current_streak>=3?`<span style="font-size:11px;margin-left:4px">🔥${str2.current_streak}</span>`:'';
+    h+=`<div class="week-row">
+      <div class="week-name">${medal} ${c.name}${streakBadge}</div>
+      <div class="week-bar-wrap"><div class="week-bar-fill" style="width:${wpc}%"></div></div>
+      <div class="week-pts">${wp}pts</div>
+      <div class="week-badge ${wc}">${tr?tr.desc.slice(0,14):'none yet'}</div>
+    </div>`;
   });
   h+=`</div>`;
   h+=`<div class="reset-row">
@@ -451,7 +474,17 @@ function rChild(child){
   const cycleStart=cfg.group?.cycleStart||todayKey();
 
   let h=`<div class="pts-hdr"><div class="pts-big">${pts}</div><div class="pts-meta"><div class="pts-lbl">today &mdash; max ${m}</div><div class="bar"><div class="bar-fill" style="width:${pct}%"></div></div><div class="bar-pct">${pct}% &mdash; ${pct>=cfg.group.threshold?'PASS ✅':pct>=50?'ALMOST ⚠️':'FAIL ❌'}</div></div></div>`;
+  const childStr=getStreak(id);
+  const tasksLeft=cfg.tasks.filter(t=>{if(t.isChore)return!localChore[id];return!(localTasks[id]?.[t.id]);}).length;
   h+=`<div class="week-hdr"><div class="week-hdr-lbl">&#127942; Cycle total</div><div><span class="week-hdr-pts">${wp}</span><span style="font-size:12px;color:var(--txt3);font-weight:600"> pts</span></div></div>`;
+  h+=`<div style="background:var(--surf2);border-radius:var(--rsm);padding:10px 13px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between">
+    <div style="font-size:13px;font-weight:700;color:var(--txt2)">${nudgeMsg(pct,tasksLeft)}</div>
+    <div style="text-align:right;flex-shrink:0;margin-left:10px">
+      ${childStr.current_streak>0?`<div style="font-size:13px;font-weight:800;color:${childStr.current_streak>=3?'#f97316':'var(--txt2)'}">🔥 ${childStr.current_streak} day${childStr.current_streak>1?'s':''}</div>`:''}
+      ${childStr.perfect_days>0?`<div style="font-size:11px;color:var(--green-d);font-weight:700">⭐ ${childStr.perfect_days} perfect day${childStr.perfect_days>1?'s':''}</div>`:''}
+      ${childStr.best_streak>1?`<div style="font-size:10px;color:var(--txt3)">best: ${childStr.best_streak}</div>`:''}
+    </div>
+  </div>`;
 
   const ev=cfg.tasks.filter(t=>t.id!=='inVan'&&!t.isChore);
   const mo=cfg.tasks.filter(t=>t.id==='inVan');
@@ -526,7 +559,35 @@ function rChild(child){
     }
   });
   h+=`</div>`;
+  // Perfect day celebration — trigger if just hit 100%
+  if(pct>=100 && !window._celebratedToday?.[id]){
+    if(!window._celebratedToday)window._celebratedToday={};
+    window._celebratedToday[id]=true;
+    setTimeout(()=>launchConfetti(),100);
+  }
   return h;
+}
+
+function launchConfetti(){
+  const colors=['#1D9E75','#f59e0b','#ef4444','#7C3AED','#3b82f6','#ec4899'];
+  const container=document.createElement('div');
+  container.style.cssText='position:fixed;inset:0;pointer-events:none;z-index:999;overflow:hidden';
+  document.body.appendChild(container);
+  for(let i=0;i<80;i++){
+    const el=document.createElement('div');
+    const color=colors[Math.floor(Math.random()*colors.length)];
+    const size=Math.random()*10+6;
+    const left=Math.random()*100;
+    const delay=Math.random()*0.8;
+    const duration=Math.random()*1.5+1.5;
+    el.style.cssText=`position:absolute;top:-20px;left:${left}%;width:${size}px;height:${size}px;background:${color};border-radius:${Math.random()>0.5?'50%':'2px'};animation:confettiFall ${duration}s ${delay}s ease-in forwards`;
+    container.appendChild(el);
+  }
+  const style=document.createElement('style');
+  style.textContent='@keyframes confettiFall{0%{transform:translateY(0) rotate(0);opacity:1}100%{transform:translateY(110vh) rotate(720deg);opacity:0}}';
+  document.head.appendChild(style);
+  setTimeout(()=>{container.remove();style.remove();},3500);
+  toast('⭐ PERFECT DAY! Amazing work!');
 }
 
 // ── HISTORY LOG ──────────────────────────────────────────
