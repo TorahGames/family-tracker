@@ -251,6 +251,7 @@ let localTasks={};    // {child_id: {task_id: bool}}
 let localChore={};    // {child_id: string|null}
 let localExtra={};    // {child_id: mins}
 let localBonus={};    // {child_id: bonus pts added by admin}
+let localDeduct={};   // {child_id: pts deducted by admin}
 let tab='overview';
 let adm=false;
 let draftCfg=null;  // copy of cfg edited in admin panel — only applied on Save
@@ -259,7 +260,7 @@ let draftCfg=null;  // copy of cfg edited in admin panel — only applied on Sav
 function deriveState(events){
   localTasks={};localChore={};localExtra={};
   cfg.children.forEach(c=>{
-    localTasks[c.id]={};localChore[c.id]=null;localExtra[c.id]=0;localBonus[c.id]=0;
+    localTasks[c.id]={};localChore[c.id]=null;localExtra[c.id]=0;localBonus[c.id]=0;localDeduct[c.id]=0;
   });
   // Process in order — latest wins for tasks/chore
   const taskLatest={};
@@ -273,6 +274,11 @@ function deriveState(events){
     if(ev.event_type==='task_done'&&ev.payload?.task_id==='__bonus__'){
       if(!localBonus[ev.child_id])localBonus[ev.child_id]=0;
       localBonus[ev.child_id]+=(ev.payload?.pts||0);
+    }
+    // points_deducted accumulates — read back on every reload/poll
+    if(ev.event_type==='points_deducted'){
+      if(!localDeduct[ev.child_id])localDeduct[ev.child_id]=0;
+      localDeduct[ev.child_id]+=(ev.payload?.pts||0);
     }
   });
   Object.values(taskLatest).forEach(ev=>{
@@ -291,7 +297,8 @@ function getPts(id){
     else if(localTasks[id]?.[t.id])p+=t.pts;
   });
   p+=(localBonus[id]||0);
-  return p;
+  p-=(localDeduct[id]||0);
+  return Math.max(0,p);
 }
 function mx(){return cfg.tasks.reduce((a,t)=>a+t.pts,0);}
 function getCycle(id){return cyclePoints[id]||0;}
@@ -528,6 +535,13 @@ function rChild(child){
     </div>
     ${ei>0?`<button class="log-btn" onclick="promptLogPay('${id}')">&#128274; Log $${ep.toFixed(2)} to ${child.name}&rsquo;s balance</button>`:''}
   </div>`;
+  // Deduct points button — admin only
+  if(adm){
+    h+=`<button onclick="promptDeduct('${id}','${child.name}')"
+      style="width:100%;padding:10px;border-radius:var(--rsm);border:1px solid #fca5a5;background:var(--red-l);font-family:'Nunito',sans-serif;font-size:13px;font-weight:800;color:#dc2626;cursor:pointer;margin-bottom:7px">
+      &#8722; Deduct points from ${child.name}
+    </button>`;
+  }
 
   if(mo.length){
     h+='<div class="sec-lbl">Morning</div>';
@@ -1049,6 +1063,46 @@ async function doCycleReset(){
   const res=await callFn('admin',{action:'cycle_reset',password:pw,day_key:todayKey()});
   if(res.error){const e=document.getElementById('cyc-err');if(e){e.style.display='block';e.textContent=res.error;}return;}
   cm();toast('New cycle started!');await loadAll();
+}
+
+// ── POINT DEDUCTION ───────────────────────────────────────
+function promptDeduct(id, name){
+  const bg=document.getElementById('modal-bg');bg.style.display='flex';
+  bg.innerHTML=`<div class="modal">
+    <div class="modal-title">&#8722; Deduct points &mdash; ${name}</div>
+    <div class="modal-body">Deducted from today's total and cycle total. Logged with description.</div>
+    <input type="number" id="deduct-pts" min="1" max="50" placeholder="Points to deduct"
+      style="width:100%;padding:11px;border-radius:9px;border:1px solid var(--bdr2);background:var(--surf2);font-size:18px;font-weight:800;color:#dc2626;text-align:center;font-family:'Nunito',sans-serif;margin-bottom:10px">
+    <input type="text" id="deduct-reason" placeholder="Reason (e.g. hitting sibling)"
+      style="width:100%;padding:11px;border-radius:9px;border:1px solid var(--bdr2);background:var(--surf2);font-size:14px;font-family:'Nunito',sans-serif;color:var(--txt);margin-bottom:10px">
+    <div class="err-txt" id="deduct-err" style="display:none">Incorrect password</div>
+    <input type="password" class="lock-input" id="deduct-pw" placeholder="Admin password"
+      onkeydown="if(event.key==='Enter')doDeduct('${id}')">
+    <div class="modal-btns">
+      <button class="mbtn mbtn-cancel" onclick="cm()">Cancel</button>
+      <button class="mbtn mbtn-del" onclick="doDeduct('${id}')">Deduct</button>
+    </div>
+  </div>`;
+}
+
+async function doDeduct(id){
+  const pts=+document.getElementById('deduct-pts')?.value;
+  const reason=(document.getElementById('deduct-reason')?.value||'').trim();
+  const pw=document.getElementById('deduct-pw')?.value;
+  const err=document.getElementById('deduct-err');
+  if(!pts||pts<=0){if(err){err.style.display='block';err.textContent='Enter a number of points';}return;}
+  // Verify admin password server-side
+  const res=await callFn('admin',{action:'verify',password:pw});
+  if(res.error){if(err){err.style.display='block';err.textContent='Incorrect password';}return;}
+  cm();
+  // Optimistic update
+  if(!localDeduct[id])localDeduct[id]=0;
+  localDeduct[id]+=pts;
+  cyclePoints[id]=Math.max(0,(cyclePoints[id]||0)-pts);
+  render();
+  // Persist as event
+  await insertEvent('points_deducted',id,{pts,reason});
+  toast(`−${pts} pts deducted from ${cfg.children.find(c=>c.id===id)?.name||id}`);
 }
 
 // ── TIMER ─────────────────────────────────────────────────
